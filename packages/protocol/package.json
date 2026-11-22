@@ -1,0 +1,32 @@
+{
+  "name": "@tartlet/protocol",
+  "version": "0.1.0",
+  "description": "Shared schemas and pure helpers for Tartlet clients and services",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run build",
+    "test": "node --test test/*.test.mjs",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "zod": "^4.1.13"
+  }
+}
