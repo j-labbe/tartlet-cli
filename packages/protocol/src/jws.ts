@@ -13,7 +13,7 @@ function decodeJson(value: string): unknown {
   return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(decodeBase64Url(value)));
 }
 function checkKey(key: CryptoKey, type: "public" | "private"): void {
-  if (key.type !== type || key.algorithm.name !== "Ed25519") throw new Error("A trusted Ed25519 key of the required type is required.");
+  if (key.type !== type || key.algorithm.name !== "Ed25519") throw new Error(`Pass a trusted Ed25519 ${type} key.`);
 }
 export async function signJws(options: { payload: SignedPayload; private_key: CryptoKey; kid?: string }): Promise<string> {
   checkKey(options.private_key, "private");
@@ -30,7 +30,7 @@ function compactParts(jws: string): { header: string; body: string; signature: s
   return { header, body, signature };
 }
 
-/** Unverified metadata only: choose an already trusted local key by kid; this does not authenticate the token or its claims. */
+/** Read the unverified JWS header so you can pick a trusted local key by kid. This does not verify the token or its claims. */
 export function readUnverifiedJwsHeader(jws: string): JwsHeader {
   return JwsHeaderSchema.parse(decodeJson(compactParts(jws).header));
 }

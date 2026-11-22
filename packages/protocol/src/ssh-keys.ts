@@ -18,7 +18,7 @@ class SshReader {
   }
 
   end(): void {
-    if (this.offset !== this.bytes.length) throw new Error("Unexpected SSH key data.");
+    if (this.offset !== this.bytes.length) throw new Error("SSH key has extra trailing data.");
   }
 }
 
@@ -26,7 +26,7 @@ function decodeKey(value: string): { bytes: Uint8Array; canonical: string } {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) throw new Error("Invalid SSH key encoding.");
   const binary = atob(value);
   const canonical = btoa(binary);
-  if (canonical !== value) throw new Error("Noncanonical SSH key encoding.");
+  if (canonical !== value) throw new Error("SSH key base64 encoding is not canonical.");
   return { bytes: Uint8Array.from(binary, (char) => char.charCodeAt(0)), canonical };
 }
 
@@ -39,7 +39,7 @@ function unsignedInteger(bytes: Uint8Array): bigint {
 function positiveMpint(bytes: Uint8Array): { value: bigint; bits: number } {
   const first = bytes[0];
   if (first === undefined || first >= 128) throw new Error("SSH integers must be positive.");
-  if (first === 0 && (bytes[1] ?? 0) < 128) throw new Error("Noncanonical SSH integer.");
+  if (first === 0 && (bytes[1] ?? 0) < 128) throw new Error("SSH integer encoding is not canonical.");
   const offset = first === 0 ? 1 : 0;
   const bits = (bytes.length - offset - 1) * 8 + Math.floor(Math.log2(bytes[offset] ?? 0)) + 1;
   if (bits > MAX_RSA_BITS) throw new Error("RSA integers cannot exceed 16384 bits.");
@@ -95,7 +95,7 @@ function validateKey(type: PublicKeyType, reader: SshReader): void {
     case "ecdsa-sha2-nistp384":
     case "ecdsa-sha2-nistp521": {
       const curve = CurveSchema.parse(new TextDecoder("utf-8", { fatal: true }).decode(reader.field()));
-      if (type !== `ecdsa-sha2-${curve}`) throw new Error("SSH key type and curve differ.");
+      if (type !== `ecdsa-sha2-${curve}`) throw new Error("SSH key type does not match its curve.");
       return validatePoint(curve, reader.field());
     }
     default: { const exhaustive: never = type; return exhaustive; }
@@ -104,13 +104,13 @@ function validateKey(type: PublicKeyType, reader: SshReader): void {
 
 export function parsePublicKey(value: string): ParsedPublicKey {
   if (value.length > MAX_KEY_LINE_BYTES || new TextEncoder().encode(value).byteLength > MAX_KEY_LINE_BYTES) throw new Error("SSH public key lines cannot exceed 8 KiB.");
-  if (/[\r\n]/.test(value)) throw new Error("An SSH public key must occupy one line.");
+  if (/[\r\n]/.test(value)) throw new Error("An SSH public key must be on one line.");
   const [rawType, encoded] = value.trim().split(/[ \t]+/);
   const type = KeyTypeSchema.parse(rawType);
   if (encoded === undefined) throw new Error("Missing SSH public key data.");
   const { bytes, canonical } = decodeKey(encoded);
   const reader = new SshReader(bytes);
-  if (new TextDecoder("utf-8", { fatal: true }).decode(reader.field()) !== type) throw new Error("SSH key types differ.");
+  if (new TextDecoder("utf-8", { fatal: true }).decode(reader.field()) !== type) throw new Error("SSH key prefix does not match the encoded key type.");
   validateKey(type, reader);
   reader.end();
   return { type, public_key: `${type} ${canonical}` };
@@ -119,7 +119,7 @@ export function parsePublicKey(value: string): ParsedPublicKey {
 export const PublicKeySchema = z.string().transform((value, context) => {
   try { return parsePublicKey(value).public_key; }
   catch {
-    context.addIssue({ code: "custom", message: "Expected one Ed25519, NIST ECDSA or RSA 2048+ public key without options." });
+    context.addIssue({ code: "custom", message: "Expected one Ed25519, NIST ECDSA, or RSA 2048+ public key with no options." });
     return z.NEVER;
   }
 });

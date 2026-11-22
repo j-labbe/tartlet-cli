@@ -19,7 +19,7 @@ export const KnownHostsLineSchema = z.string().refine((value) => {
   const [alias, ...parts] = value.split(" ");
   if (!HostKeyAliasSchema.safeParse(alias).success) return false;
   try { return parsePublicKey(parts.join(" ")).public_key === parts.join(" "); } catch { return false; }
-}, "Expected an alias followed by a pinned SSH public key, without options or comments.");
+}, "Expected a host alias and a pinned SSH public key, with no options or comments.");
 const connection = {
   host: HostSchema, port: PortSchema, user: SshUserSchema,
   host_key_alias: HostKeyAliasSchema, known_hosts_line: KnownHostsLineSchema,
@@ -69,7 +69,7 @@ export const LinkRequestSchema = z.strictObject({ vm: VmTargetSchema, public_key
 export const LinkResponseSchema = z.strictObject({ vm: VmNameSchema, public_key: PublicKeySchema, linked: z.literal(true) });
 export const UnlinkRequestSchema = LinkRequestSchema;
 export const UnlinkResponseSchema = z.strictObject({ vm: VmNameSchema, public_key: PublicKeySchema, linked: z.literal(false) });
-export const TunnelOpenRequestSchema = z.strictObject({ vm: VmTargetSchema }).describe("Open a direct HTTPS WebSocket tunnel to port 22 of the caller-owned current VM instance. Send the bearer token only in the Authorization header, never in a cookie or query string.");
+export const TunnelOpenRequestSchema = z.strictObject({ vm: VmTargetSchema }).describe("Open a direct HTTPS WebSocket tunnel to port 22 on the current instance of a VM the caller owns. Send the bearer token only in the Authorization header, never in a cookie or query string.");
 export type VmTarget = z.infer<typeof VmTargetSchema>;
 export type Setup = z.infer<typeof SetupSchema>;
 export type SshConnection = z.infer<typeof SshConnectionSchema>;

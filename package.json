@@ -2,6 +2,7 @@
   "name": "tartlet-cli-workspace",
   "private": true,
   "version": "0.1.0",
+  "description": "Public npm packages for Tartlet, a self-hosted Mac VM console",
   "type": "module",
   "license": "Apache-2.0",
   "engines": {

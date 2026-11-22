@@ -20,9 +20,9 @@ export const KeyRefreshMessageSchema = z.strictObject({ type: z.literal("key_ref
 export const CutoffMessageSchema = z.strictObject({
   type: z.literal("cutoff"), cutoff_id: CutoffIdSchema, cursor: CursorSchema, person: PersonIdentitySchema, at: UnixTimeSchema,
 });
-/** Acknowledge only after persisting cut-offs; delivery is at least once and deduplication uses cutoff_id. */
+/** Acknowledge cut-offs only after saving them. Delivery is at least once, so ignore any cutoff_id you already saved. */
 export const AckMessageSchema = z.strictObject({ type: z.literal("ack"), cutoff_ids: z.array(CutoffIdSchema).min(1).max(100) });
-/** Reconnect catch-up must finish before serving requests; persist the last fully processed cursor. */
+/** Finish catch-up after reconnecting before serving requests. Save the cursor only after you handle the full batch. */
 export const CatchUpRequestMessageSchema = z.strictObject({ type: z.literal("catch_up_request"), after_cursor: CursorSchema.nullable() });
 export const CatchUpMessageSchema = z.strictObject({ type: z.literal("catch_up"), cutoffs: z.array(CutoffMessageSchema).max(100), next_cursor: CursorSchema, complete: z.boolean() });
 export const CloudMessageSchema = z.discriminatedUnion("type", [ChallengeMessageSchema, HelloMessageSchema, WelcomeMessageSchema, KeyRefreshMessageSchema, CutoffMessageSchema, AckMessageSchema, CatchUpRequestMessageSchema, CatchUpMessageSchema]);

@@ -18,10 +18,10 @@ const paging = {
 export const OutputPageSchema = z.strictObject({
   text: z.string().refine((value) => !/[\uD800-\uDFFF]/u.test(value), "Output text cannot contain unpaired surrogates."), offset: ByteOffsetSchema, next_offset: ByteOffsetSchema, total_bytes: ByteOffsetSchema, dropped_before: ByteOffsetSchema,
 }).refine((page) => page.dropped_before <= page.offset && page.offset <= page.next_offset && page.next_offset <= page.total_bytes, "Output byte offsets are out of order.")
-  .refine((page) => page.total_bytes - page.dropped_before <= MAX_RETAINED_STREAM_BYTES, "Output exceeds retention.")
+  .refine((page) => page.total_bytes - page.dropped_before <= MAX_RETAINED_STREAM_BYTES, "Output exceeds the 4 MiB retention limit.")
   .refine((page) => page.next_offset - page.offset <= MAX_OUTPUT_PAGE_BYTES, "Output page exceeds the maximum byte count.")
   .refine((page) => page.text.length <= page.next_offset - page.offset, "Output text cannot exceed the raw bytes consumed.")
-  .describe("Offsets and counts are raw-stream bytes. Decode UTF-8 with replacement, ending before any split character. Read from max(requested_offset, dropped_before); retain at most the last 4 MiB. dropped_before is the sole truncation indicator.");
+  .describe("Offsets and counts use raw stream bytes. Decode UTF-8 with replacement characters and stop before any split character. Read from max(requested_offset, dropped_before) and keep at most the last 4 MiB. Check dropped_before to see if the server dropped earlier bytes.");
 
 const job = { job_id: JobIdSchema, vm: VmNameSchema, started_at: TimestampSchema };
 const finished = { ...job, finished_at: TimestampSchema };
@@ -36,7 +36,7 @@ export const CommandStatusSchema = z.discriminatedUnion("status", [
 
 export const RunCommandRequestSchema = z.strictObject({
   client_request_id: ClientRequestIdSchema, vm: VmNameSchema,
-  command: z.string().min(1).max(16384).pipe(z.string().refine((value) => new TextEncoder().encode(value).byteLength <= 16384, "Commands cannot exceed 16 KiB.")).describe("Command text is sent to the guest through stdin; never interpolate it into a shell command."),
+  command: z.string().min(1).max(16384).pipe(z.string().refine((value) => new TextEncoder().encode(value).byteLength <= 16384, "Commands cannot exceed 16 KiB.")).describe("Send command text to the guest through stdin. Never insert it into a shell command string."),
   timeout_seconds: z.number().int().min(1).max(MAX_COMMAND_TIMEOUT_SECONDS).default(DEFAULT_COMMAND_TIMEOUT_SECONDS),
 });
 export const GetCommandRequestSchema = z.strictObject({ job_id: JobIdSchema, vm: VmNameSchema, ...paging });

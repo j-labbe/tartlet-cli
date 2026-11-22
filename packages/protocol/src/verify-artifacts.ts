@@ -14,7 +14,7 @@ function decodeJson(value: string): unknown {
 function checkTime(payload: unknown, now: number): void {
   const claims = ClockClaimsSchema.parse(payload);
   UnixTimeSchema.parse(now);
-  if (claims.exp <= claims.iat) throw new Error("JWS expiry must follow issuance.");
+  if (claims.exp <= claims.iat) throw new Error("JWS expiry time must be after its issued-at time.");
   if (now >= claims.exp + CLOCK_SKEW_SECONDS) throw new Error("JWS has expired.");
   if (claims.iat > now + CLOCK_SKEW_SECONDS) throw new Error("JWS was issued in the future.");
   if (claims.nbf !== undefined && claims.nbf > now + CLOCK_SKEW_SECONDS) throw new Error("JWS is not yet valid.");
@@ -31,7 +31,7 @@ interface VerifyJwsOptions<T> {
 }
 
 async function verifyJws<T>(options: VerifyJwsOptions<T>): Promise<T> {
-  if (options.public_key.type !== "public" || options.public_key.algorithm.name !== "Ed25519") throw new Error("A trusted Ed25519 public key is required.");
+  if (options.public_key.type !== "public" || options.public_key.algorithm.name !== "Ed25519") throw new Error("Pass a trusted Ed25519 public key.");
   readUnverifiedJwsHeader(options.jws);
   const [header = "", body = "", signature = ""] = options.jws.split(".");
   const valid = await globalThis.crypto.subtle.verify("Ed25519", options.public_key, decodeBase64Url(signature), new TextEncoder().encode(`${header}.${body}`));
@@ -77,7 +77,7 @@ export function verifyEnrollmentApproval(options: Verification<ExpectedEnrollmen
     default: { const exhaustive: never = context; return exhaustive; }
   }
 }
-/** Verify before sending credentials, using the saved profile key and origin; cloud metadata cannot replace pins. */
+/** Verify the server proof before sending credentials. Use the saved profile key and origin, because cloud metadata cannot replace saved pins. */
 export function verifyServerProof(options: Verification<ExpectedServerProof>): Promise<ServerProofPayload> {
   return verifyJws({ ...options, schema: ServerProofPayloadSchema, expected: expectedProof.parse(options.expected) });
 }
