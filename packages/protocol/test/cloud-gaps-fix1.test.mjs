@@ -102,7 +102,15 @@ test("extended enrollment approver rejects unknown keys in schemas, signing, and
   const input = `${header}.${body}`;
   const signature = await crypto.subtle.sign("Ed25519", keys.privateKey, new TextEncoder().encode(input));
   const jws = `${input}.${Buffer.from(signature).toString("base64url")}`;
+  const expected = { mode: "initial", server_public_key: f.rawPublicKey, nonce: f.nonce, approver_iss: f.person.iss };
+  const { extra: _extra, ...approver } = payload.approver;
+  const control = { ...payload, approver };
+  const controlBody = Buffer.from(JSON.stringify(control)).toString("base64url");
+  const controlInput = `${header}.${controlBody}`;
+  const controlSignature = await crypto.subtle.sign("Ed25519", keys.privateKey, new TextEncoder().encode(controlInput));
+  const controlJws = `${controlInput}.${Buffer.from(controlSignature).toString("base64url")}`;
+  assert.deepEqual(await p.verifyEnrollmentApproval({ jws: controlJws, public_key: keys.publicKey, expected, now: 1000 }), control);
   await assert.rejects(p.verifyEnrollmentApproval({
-    jws, public_key: keys.publicKey, expected: { mode: "initial", server_public_key: f.rawPublicKey, nonce: f.nonce, approver_iss: f.person.iss }, now: 1000,
+    jws, public_key: keys.publicKey, expected, now: 1000,
   }));
 });

@@ -13,8 +13,8 @@ export const HttpsTrustSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("local_ca"), root_sha256: z.string().regex(/^[0-9a-f]{64}$/).describe("SHA-256 of the root certificate's DER-encoded SubjectPublicKeyInfo (SPKI), as 64 lowercase hex characters.") }),
 ]);
 export const EnrollmentStartRequestSchema = z.strictObject({
-  server_public_key: ServerPublicKeySchema, server_name: z.string().min(1).max(64).refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value), "Server names cannot contain control or formatting characters."),
-  addresses: z.array(EnrollmentAddressSchema).min(1).max(4), nonce: NonceSchema,
+  server_public_key: ServerPublicKeySchema, server_name: z.string().min(1).max(64).refine((value) => !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u.test(value), "Server names cannot contain control or formatting characters, line or paragraph separators, or unpaired surrogates."),
+  addresses: z.array(EnrollmentAddressSchema).min(1).max(4).refine((addresses) => new Set(addresses.map(({ kind, host, port }) => JSON.stringify([kind, host.toLowerCase(), port]))).size === addresses.length, "Server addresses must be unique."), nonce: NonceSchema,
   reenroll: z.strictObject({ server_id: ServerIdSchema, org_id: OrganizationIdSchema }).optional(),
   https_trust: HttpsTrustSchema.optional(),
 });
@@ -48,7 +48,7 @@ export const UnenrollResponseSchema = z.strictObject({ unenrolled: z.literal(tru
 export const ServerListResponseSchema = z.strictObject({
   servers: z.array(z.strictObject({
     server_id: ServerIdSchema, org_id: OrganizationIdSchema, name: EnrollmentStartRequestSchema.shape.server_name,
-    addresses: EnrollmentStartRequestSchema.shape.addresses.refine((addresses) => new Set(addresses.map(({ kind, host, port }) => JSON.stringify([kind, host, port]))).size === addresses.length, "Server addresses must be unique."), online: z.boolean(),
+    addresses: EnrollmentStartRequestSchema.shape.addresses, online: z.boolean(),
   })).max(500).refine((servers) => new Set(servers.map((server) => server.server_id)).size === servers.length, "Server IDs must be unique."),
 });
 export const ChallengeMessageSchema = z.strictObject({ type: z.literal("challenge"), nonce: NonceSchema, issued_at: UnixTimeSchema });
@@ -64,7 +64,7 @@ export const AckMessageSchema = z.strictObject({ type: z.literal("ack"), cutoff_
 export const CatchUpRequestMessageSchema = z.strictObject({ type: z.literal("catch_up_request"), after_cursor: CursorSchema.nullable() });
 export const CatchUpMessageSchema = z.strictObject({
   type: z.literal("catch_up"), cutoffs: z.array(CutoffMessageSchema).max(100), next_cursor: CursorSchema, complete: z.boolean(),
-  upstream_synced_at: UnixTimeSchema.describe("Time of the cloud's last complete upstream reconciliation for the organization, with no undelivered cut-offs. The server records this value as its last successful sync, never its own clock."),
+  upstream_synced_at: UnixTimeSchema.describe("Time of the cloud's last complete upstream reconciliation for the organization, with no undelivered cut-offs. The server records this value as its last successful sync, never its own clock. Record it only after handling a batch with complete: true, following the same rule as saving the cursor."),
 });
 export const CloudMessageSchema = z.discriminatedUnion("type", [ChallengeMessageSchema, HelloMessageSchema, WelcomeMessageSchema, KeyRefreshMessageSchema, CutoffMessageSchema, AckMessageSchema, CatchUpRequestMessageSchema, CatchUpMessageSchema]);
 export const CloudToServerMessageSchema = z.discriminatedUnion("type", [ChallengeMessageSchema, WelcomeMessageSchema, KeyRefreshMessageSchema, CutoffMessageSchema, CatchUpMessageSchema]);
