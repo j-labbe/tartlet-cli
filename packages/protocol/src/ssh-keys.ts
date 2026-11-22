@@ -36,14 +36,14 @@ function unsignedInteger(bytes: Uint8Array): bigint {
   return value;
 }
 
-function positiveMpint(bytes: Uint8Array): bigint {
+function positiveMpint(bytes: Uint8Array): { value: bigint; bits: number } {
   const first = bytes[0];
   if (first === undefined || first >= 128) throw new Error("SSH integers must be positive.");
   if (first === 0 && (bytes[1] ?? 0) < 128) throw new Error("Noncanonical SSH integer.");
   const offset = first === 0 ? 1 : 0;
   const bits = (bytes.length - offset - 1) * 8 + Math.floor(Math.log2(bytes[offset] ?? 0)) + 1;
   if (bits > MAX_RSA_BITS) throw new Error("RSA integers cannot exceed 16384 bits.");
-  return unsignedInteger(bytes);
+  return { value: unsignedInteger(bytes), bits };
 }
 
 const curves = {
@@ -79,10 +79,10 @@ function validatePoint(curveName: z.infer<typeof CurveSchema>, point: Uint8Array
 function validateRsa(reader: SshReader): void {
   const exponentBytes = reader.field();
   const modulusBytes = reader.field();
-  const modulus = positiveMpint(modulusBytes);
-  const exponent = positiveMpint(exponentBytes);
+  const { value: modulus, bits: modulusBits } = positiveMpint(modulusBytes);
+  const { value: exponent } = positiveMpint(exponentBytes);
   if (exponent < 3n || exponent % 2n !== 1n || exponent >= modulus) throw new Error("Invalid RSA exponent.");
-  if (modulus.toString(2).length < 2048 || modulus % 2n !== 1n) throw new Error("RSA keys must have at least 2048 bits.");
+  if (modulusBits < 2048 || modulus % 2n !== 1n) throw new Error("RSA keys must have at least 2048 bits.");
 }
 
 function validateKey(type: PublicKeyType, reader: SshReader): void {

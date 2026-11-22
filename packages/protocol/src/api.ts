@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ProtocolFailureSchema } from "./errors.js";
-import { TaskLabelSchema, VmNameSchema } from "./ids.js";
+import { TaskLabelSchema, VmNameSchema, WorkerNameSchema } from "./ids.js";
 import { NonceSchema, HostSchema, HostKeyAliasSchema, SshUserSchema, PortSchema, TimestampSchema } from "./primitives.js";
 import { JwsCompactSchema } from "./cloud.js";
 import { PublicKeySchema, parsePublicKey } from "./ssh-keys.js";
@@ -24,17 +24,18 @@ const connection = {
   host: HostSchema, port: PortSchema, user: SshUserSchema,
   host_key_alias: HostKeyAliasSchema, known_hosts_line: KnownHostsLineSchema,
 };
+const DisplayOnlyTextSchema = z.string().describe("Display-only text. The CLI builds SSH arguments from typed fields only.");
 const matchingAlias = (value: { host_key_alias: string; known_hosts_line: string }) => value.known_hosts_line.startsWith(`${value.host_key_alias} `);
-export const SshConnectionSchema = z.strictObject({ ...connection, ssh_options: z.string(), command: z.string() }).refine(matchingAlias, "Pinned host key alias does not match.");
+export const SshConnectionSchema = z.strictObject({ ...connection, ssh_options: DisplayOnlyTextSchema, command: DisplayOnlyTextSchema }).refine(matchingAlias, "Pinned host key alias does not match.");
 const progress = { completed_bytes: z.string().regex(/^\d+$/), total_bytes: z.string().regex(/^\d+$/), percent: z.number().min(0).max(100), seconds_left: z.number().min(0).optional(), message: z.string() };
 export const VmHomeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("none") }),
-  z.strictObject({ kind: z.literal("host"), host: HostSchema, path: z.string(), mount_name: z.string().min(1).max(255) }),
+  z.strictObject({ kind: z.literal("host"), host: WorkerNameSchema, path: z.string(), mount_name: z.string().min(1).max(255) }),
   z.strictObject({ kind: z.literal("nas"), path: z.string(), mount_name: z.string().min(1).max(255) }),
   z.strictObject({
     kind: z.literal("volume"), health: z.enum(["healthy", "degraded", "unavailable", "unknown"]), mode: z.enum(["memory", "durable"]),
     copy_count: z.number().int().min(0), reason: z.string().optional(), safety: z.string(),
-    copies: z.array(z.strictObject({ host: HostSchema, replica: z.string().min(1).max(128).optional(), role: z.enum(["primary", "copy", "filling", "stale"]) })),
+    copies: z.array(z.strictObject({ host: WorkerNameSchema, replica: z.string().min(1).max(128).optional(), role: z.enum(["primary", "copy", "filling", "stale"]) })),
     progress: z.discriminatedUnion("phase", [
       z.strictObject({ phase: z.literal("filling"), ...progress }),
       z.strictObject({ phase: z.literal("recovering"), ...progress, completed_bytes: progress.completed_bytes.optional(), total_bytes: progress.total_bytes.optional(), percent: progress.percent.optional() }),
@@ -45,13 +46,13 @@ export const VmHomeSchema = z.discriminatedUnion("kind", [
 export const VmConnectionSchema = z.strictObject({ name: z.string(), guest_port: PortSchema, connection: z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("pending") }),
   z.strictObject({ kind: z.literal("unsupported") }),
-  z.strictObject({ kind: z.literal("ssh"), command: z.string() }),
+  z.strictObject({ kind: z.literal("ssh"), command: DisplayOnlyTextSchema }),
   z.strictObject({ kind: z.literal("screen-sharing"), url: z.url({ protocol: /^vnc$/ }) }),
-  z.strictObject({ kind: z.literal("port"), address: z.string() }),
+  z.strictObject({ kind: z.literal("port"), address: DisplayOnlyTextSchema }),
 ]) });
 export const VmSchema = z.strictObject({
   name: VmNameSchema, label: TaskLabelSchema.optional(), status: z.enum(["starting", "running", "failed", "unknown"]),
-  detail: z.string().optional(), host: HostSchema.optional(), image: z.string(), image_id: z.string().min(1).max(128).optional(), image_label: z.string().optional(),
+  detail: z.string().optional(), host: WorkerNameSchema.optional(), image: z.string(), image_id: z.string().min(1).max(128).optional(), image_label: z.string().optional(),
   size: z.strictObject({ cpu: z.number().int().positive().optional(), memory_mib: z.number().int().positive().optional(), disk_gib: z.number().int().positive().optional() }),
   login: SshUserSchema.optional(), network: z.enum(["shared", "isolated", "bridged"]), persistent_home: z.boolean(), home: VmHomeSchema,
   guest_home_path: z.string().optional(), connect: z.array(VmConnectionSchema), created_at: TimestampSchema.optional(),

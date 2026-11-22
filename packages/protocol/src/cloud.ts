@@ -2,7 +2,7 @@ import { z } from "zod";
 import { CutoffIdSchema, ServerIdSchema } from "./ids.js";
 import { CursorSchema, DeviceCodeSchema, HostSchema, HttpsUrlSchema, NonceSchema, PersonIdentitySchema, ServerPublicKeySchema, UnixTimeSchema } from "./primitives.js";
 
-export const JwsCompactSchema = z.string().regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+export const JwsCompactSchema = z.string().max(16384).regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
 export const EnrollmentAddressSchema = z.strictObject({ kind: z.enum(["tailnet", "lan"]), host: HostSchema });
 export const EnrollmentStartRequestSchema = z.strictObject({
   server_public_key: ServerPublicKeySchema, server_name: z.string().min(1).max(64),
@@ -10,7 +10,7 @@ export const EnrollmentStartRequestSchema = z.strictObject({
 });
 export const EnrollmentStartResponseSchema = z.strictObject({
   device_code: DeviceCodeSchema, user_code: z.string().regex(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/),
-  verification_uri: HttpsUrlSchema, expires_in: z.number().int().min(1).max(600), interval: z.number().int().positive(),
+  verification_uri: HttpsUrlSchema, expires_in: z.number().int().min(1).max(600), interval: z.number().int().positive().max(600),
 });
 export const EnrollmentPollRequestSchema = z.strictObject({ device_code: DeviceCodeSchema, proof: JwsCompactSchema });
 export const ChallengeMessageSchema = z.strictObject({ type: z.literal("challenge"), nonce: NonceSchema, issued_at: UnixTimeSchema });

@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { CLOCK_SKEW_SECONDS, EnrollmentApprovalPayloadSchema, EnrollmentPollPayloadSchema, HelloPayloadSchema, IdentityTokenClaimsSchema, ServerProofPayloadSchema } from "./artifacts.js";
 import type { EnrollmentApprovalPayload, EnrollmentPollPayload, HelloPayload, IdentityTokenClaims, ServerProofPayload } from "./artifacts.js";
+import { matchesExpected } from "./expected-fields.js";
 import { readUnverifiedJwsHeader } from "./jws.js";
 import { decodeBase64Url } from "./encoding.js";
 import { UnixTimeSchema } from "./primitives.js";
 
 const ClockClaimsSchema = z.looseObject({ iat: UnixTimeSchema, exp: UnixTimeSchema, nbf: UnixTimeSchema.optional() });
-const RecordSchema = z.record(z.string(), z.unknown());
 
 function decodeJson(value: string): unknown {
   return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(decodeBase64Url(value)));
@@ -18,13 +18,6 @@ function checkTime(payload: unknown, now: number): void {
   if (now >= claims.exp + CLOCK_SKEW_SECONDS) throw new Error("JWS has expired.");
   if (claims.iat > now + CLOCK_SKEW_SECONDS) throw new Error("JWS was issued in the future.");
   if (claims.nbf !== undefined && claims.nbf > now + CLOCK_SKEW_SECONDS) throw new Error("JWS is not yet valid.");
-}
-function matchesExpected(actual: unknown, expected: unknown): boolean {
-  const record = RecordSchema.safeParse(expected);
-  if (!record.success) return Object.is(actual, expected);
-  const value = RecordSchema.safeParse(actual);
-  if (!value.success || Object.keys(record.data).length === 0) return false;
-  return Object.entries(record.data).every(([key, field]) => Object.hasOwn(value.data, key) && matchesExpected(value.data[key], field));
 }
 
 type ExpectedFields<T> = { [K in keyof T]?: T[K] extends object ? ExpectedFields<T[K]> : T[K] };

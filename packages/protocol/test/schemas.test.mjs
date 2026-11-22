@@ -6,6 +6,7 @@ import * as f from "./fixtures.mjs";
 const fixtures = {
   PersonIdSchema: ["person_1", "person..1"],
   VmNameSchema: ["vm-1", "VM-1"],
+  WorkerNameSchema: ["mac_mini", "-mac"],
   TaskLabelSchema: ["task-1", "a".repeat(17)],
   ServerIdSchema: [f.serverId, `srv_${"0".repeat(26)}`],
   OrganizationIdSchema: [f.orgId, f.serverId],

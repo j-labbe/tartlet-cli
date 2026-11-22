@@ -3,7 +3,8 @@ import { isBase64Url32 } from "./encoding.js";
 
 function hasSafeHttpsAuthority(value: string): boolean {
   const authority = /^https:\/\/([^/?#]*)/i.exec(value)?.[1];
-  return authority !== undefined && !authority.includes("@") && !/[\p{Cc}\\\s]/u.test(value);
+  try { return authority !== undefined && !authority.includes("@") && !/[\p{Cc}\\\s]/u.test(value) && new URL(value).port !== "0"; }
+  catch { return false; }
 }
 function isCanonicalHost(value: string): boolean {
   if (value.length > 253) return false;

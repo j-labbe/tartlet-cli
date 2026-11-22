@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { JwsCompactSchema } from "./cloud.js";
 import { SignedPayloadSchema } from "./artifacts.js";
 import type { SignedPayload } from "./artifacts.js";
 import { decodeBase64Url, encodeBase64Url } from "./encoding.js";
@@ -24,7 +25,7 @@ export async function signJws(options: { payload: SignedPayload; private_key: Cr
 }
 
 function compactParts(jws: string): { header: string; body: string; signature: string } {
-  if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(jws)) throw new Error("Expected a compact JWS.");
+  JwsCompactSchema.parse(jws);
   const [header = "", body = "", signature = ""] = jws.split(".");
   return { header, body, signature };
 }

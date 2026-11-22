@@ -18,7 +18,7 @@ export const ServerProofPayloadSchema = z.strictObject({
 }).refine(oneMinute, "Server identity proofs last 60 seconds.");
 export const IdentityTokenClaimsSchema = z.strictObject({
   typ: z.literal("tartlet-identity"), iss: PersonIdentitySchema.shape.iss, aud: ServerIdSchema, sub: PersonIdentitySchema.shape.sub, nonce: NonceSchema,
-  ...times, nbf: UnixTimeSchema, org: OrganizationIdSchema, email: z.email({ pattern: z.regexes.unicodeEmail }).max(254), email_verified: z.boolean(),
+  ...times, nbf: UnixTimeSchema, org: OrganizationIdSchema, email: z.email({ pattern: z.regexes.unicodeEmail }).max(254).refine((value) => !/\p{Cc}/u.test(value)), email_verified: z.boolean(),
 }).refine(tenMinutes, "Identity tokens last at most 600 seconds.")
   .refine((value) => value.nbf <= value.exp, "Identity tokens cannot become valid after expiry.");
 export const SignedPayloadSchema = z.discriminatedUnion("typ", [HelloPayloadSchema, EnrollmentPollPayloadSchema, EnrollmentApprovalPayloadSchema, ServerProofPayloadSchema, IdentityTokenClaimsSchema]);
