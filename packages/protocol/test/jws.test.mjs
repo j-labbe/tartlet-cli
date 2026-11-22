@@ -56,6 +56,8 @@ test("verifies every signed artifact and requires all context expectations", asy
     [f.approval, p.verifyEnrollmentApproval, { mode: "initial", server_public_key: f.rawPublicKey, approver_iss: f.person.iss, nonce: f.nonce }],
     [f.proof, p.verifyServerProof, { server_id: f.serverId, origin: f.proof.origin, nonce: f.nonce }],
     [f.claims, p.verifyIdentityToken, { iss: f.claims.iss, aud: f.serverId, nonce: f.nonce, org: f.orgId }],
+    [f.unenroll, p.verifyUnenroll, { server_id: f.serverId, nonce: f.nonce }],
+    [f.cloudAccess, p.verifyCloudAccessToken, { iss: f.cloudAccess.iss, aud: f.cloudAccess.aud }],
   ];
   for (const [payload, verifier, expected] of cases) {
     const jws = await sign(payload);
@@ -84,6 +86,8 @@ test("each artifact verifier rejects every other signed artifact type", async ()
     [f.approval, p.verifyEnrollmentApproval, { mode: "initial", server_public_key: f.rawPublicKey, approver_iss: f.person.iss, nonce: f.nonce }],
     [f.proof, p.verifyServerProof, { server_id: f.serverId, origin: f.proof.origin, nonce: f.nonce }],
     [f.claims, p.verifyIdentityToken, { iss: f.claims.iss, aud: f.serverId, nonce: f.nonce, org: f.orgId }],
+    [f.unenroll, p.verifyUnenroll, { server_id: f.serverId, nonce: f.nonce }],
+    [f.cloudAccess, p.verifyCloudAccessToken, { iss: f.cloudAccess.iss, aud: f.cloudAccess.aud }],
   ];
   for (const [payload] of cases) {
     const jws = await sign(payload);

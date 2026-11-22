@@ -2,6 +2,7 @@ import { generateKeyPairSync } from "node:crypto";
 
 export const serverId = `srv_${"a".repeat(26)}`;
 export const orgId = `org_${"b".repeat(26)}`;
+export const accountId = `acct_${"e".repeat(26)}`;
 export const jobId = `job_${"c".repeat(26)}`;
 export const cutoffId = `cut_${"d".repeat(26)}`;
 export const nonce = Buffer.alloc(32, 7).toString("base64url");
@@ -17,9 +18,12 @@ export const target = { kind: "name", name: "vm-1" };
 export const cutoff = { type: "cutoff", cutoff_id: cutoffId, cursor: "cursor-1", person, at: 1000 };
 export const hello = { typ: "tartlet-hello", server_id: serverId, nonce, iat: 1000, exp: 1060 };
 export const poll = { typ: "tartlet-enroll-poll", device_code: "example-device-code", iat: 1000, exp: 1060 };
-export const approval = { typ: "tartlet-enrollment", server_id: serverId, org_id: orgId, server_public_key: rawPublicKey, approver: person, nonce, iat: 1000, exp: 1600 };
+export const approval = { typ: "tartlet-enrollment", server_id: serverId, org_id: orgId, server_public_key: rawPublicKey, approver: { ...person, sub: accountId }, nonce, iat: 1000, exp: 1600 };
 export const proof = { typ: "tartlet-server-proof", server_id: serverId, origin: "https://server.example.com", nonce, iat: 1000, exp: 1060 };
-export const claims = { typ: "tartlet-identity", iss: person.iss, aud: serverId, sub: person.sub, nonce, iat: 1000, nbf: 1000, exp: 1600, org: orgId, email: "person@example.com", email_verified: true };
+export const claims = { typ: "tartlet-identity", iss: person.iss, aud: serverId, sub: accountId, nonce, iat: 1000, nbf: 1000, exp: 1600, org: orgId, email: "person@example.com", email_verified: true };
+export const unenroll = { typ: "tartlet-unenroll", server_id: serverId, nonce, iat: 1000, exp: 1060 };
+export const cloudAccess = { typ: "tartlet-cloud-access", iss: person.iss, aud: person.iss, sub: accountId, iat: 1000, nbf: 1000, exp: 1600 };
+export const listedServer = { server_id: serverId, org_id: orgId, name: "Server 1", addresses: [{ kind: "tailnet", host: "server.example.com", port: 8443 }], online: true };
 
 export function field(value) {
   const bytes = typeof value === "string" ? Buffer.from(value) : value;
