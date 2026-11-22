@@ -13,5 +13,5 @@ export function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> {
 }
 
 export function isBase64Url32(value: string): boolean {
-  try { return decodeBase64Url(value).length === 32; } catch { return false; }
+  try { return value.length === 43 && decodeBase64Url(value).length === 32; } catch { return false; }
 }

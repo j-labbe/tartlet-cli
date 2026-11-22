@@ -8,5 +8,6 @@ export * from "./commands.js";
 export * from "./artifacts.js";
 export * from "./cloud.js";
 export * from "./api.js";
-export * from "./jws.js";
+export { JwsHeaderSchema, readUnverifiedJwsHeader, signJws } from "./jws.js";
+export type { JwsHeader } from "./jws.js";
 export * from "./verify-artifacts.js";

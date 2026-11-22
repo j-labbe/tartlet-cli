@@ -36,7 +36,7 @@ export const CommandStatusSchema = z.discriminatedUnion("status", [
 
 export const RunCommandRequestSchema = z.strictObject({
   client_request_id: ClientRequestIdSchema, vm: VmNameSchema,
-  command: z.string().min(1).describe("Command text is sent to the guest through stdin; never interpolate it into a shell command."),
+  command: z.string().min(1).max(16384).pipe(z.string().refine((value) => new TextEncoder().encode(value).byteLength <= 16384, "Commands cannot exceed 16 KiB.")).describe("Command text is sent to the guest through stdin; never interpolate it into a shell command."),
   timeout_seconds: z.number().int().min(1).max(MAX_COMMAND_TIMEOUT_SECONDS).default(DEFAULT_COMMAND_TIMEOUT_SECONDS),
 });
 export const GetCommandRequestSchema = z.strictObject({ job_id: JobIdSchema, vm: VmNameSchema, ...paging });

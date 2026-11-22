@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { ErrorResponse } from "./errors.js";
 
 export const PROTOCOL_VERSION = 1;
-export const CliVersionSchema = z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/);
+export const CliVersionSchema = z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/);
 export const VersionResponseSchema = z.strictObject({ protocol_version: z.number().int().positive(), cli_version: CliVersionSchema });
 export type VersionResponse = z.infer<typeof VersionResponseSchema>;
 

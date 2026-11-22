@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CutoffIdSchema, ServerIdSchema } from "./ids.js";
-import { CursorSchema, HostSchema, NonceSchema, PersonIdentitySchema, ServerPublicKeySchema, UnixTimeSchema } from "./primitives.js";
+import { CursorSchema, DeviceCodeSchema, HostSchema, HttpsUrlSchema, NonceSchema, PersonIdentitySchema, ServerPublicKeySchema, UnixTimeSchema } from "./primitives.js";
 
 export const JwsCompactSchema = z.string().regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
 export const EnrollmentAddressSchema = z.strictObject({ kind: z.enum(["tailnet", "lan"]), host: HostSchema });
@@ -9,10 +9,10 @@ export const EnrollmentStartRequestSchema = z.strictObject({
   addresses: z.array(EnrollmentAddressSchema).min(1).max(4), nonce: NonceSchema,
 });
 export const EnrollmentStartResponseSchema = z.strictObject({
-  device_code: z.string().min(1), user_code: z.string().regex(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/),
-  verification_uri: z.url({ protocol: /^https$/ }), expires_in: z.number().int().min(1).max(600), interval: z.number().int().positive(),
+  device_code: DeviceCodeSchema, user_code: z.string().regex(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/),
+  verification_uri: HttpsUrlSchema, expires_in: z.number().int().min(1).max(600), interval: z.number().int().positive(),
 });
-export const EnrollmentPollRequestSchema = z.strictObject({ device_code: z.string().min(1), proof: JwsCompactSchema });
+export const EnrollmentPollRequestSchema = z.strictObject({ device_code: DeviceCodeSchema, proof: JwsCompactSchema });
 export const ChallengeMessageSchema = z.strictObject({ type: z.literal("challenge"), nonce: NonceSchema, issued_at: UnixTimeSchema });
 export const HelloMessageSchema = z.strictObject({ type: z.literal("hello"), server_id: ServerIdSchema, protocol_version: z.number().int().positive(), proof: JwsCompactSchema });
 export const WelcomeMessageSchema = z.strictObject({ type: z.literal("welcome"), head_cursor: CursorSchema });
@@ -24,7 +24,7 @@ export const CutoffMessageSchema = z.strictObject({
 export const AckMessageSchema = z.strictObject({ type: z.literal("ack"), cutoff_ids: z.array(CutoffIdSchema).min(1).max(100) });
 /** Reconnect catch-up must finish before serving requests; persist the last fully processed cursor. */
 export const CatchUpRequestMessageSchema = z.strictObject({ type: z.literal("catch_up_request"), after_cursor: CursorSchema.nullable() });
-export const CatchUpMessageSchema = z.strictObject({ type: z.literal("catch_up"), cutoffs: z.array(CutoffMessageSchema), next_cursor: CursorSchema, complete: z.boolean() });
+export const CatchUpMessageSchema = z.strictObject({ type: z.literal("catch_up"), cutoffs: z.array(CutoffMessageSchema).max(100), next_cursor: CursorSchema, complete: z.boolean() });
 export const CloudMessageSchema = z.discriminatedUnion("type", [ChallengeMessageSchema, HelloMessageSchema, WelcomeMessageSchema, KeyRefreshMessageSchema, CutoffMessageSchema, AckMessageSchema, CatchUpRequestMessageSchema, CatchUpMessageSchema]);
 export const CloudToServerMessageSchema = z.discriminatedUnion("type", [ChallengeMessageSchema, WelcomeMessageSchema, KeyRefreshMessageSchema, CutoffMessageSchema, CatchUpMessageSchema]);
 export const ServerToCloudMessageSchema = z.discriminatedUnion("type", [HelloMessageSchema, AckMessageSchema, CatchUpRequestMessageSchema]);

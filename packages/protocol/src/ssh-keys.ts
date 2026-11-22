@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+const MAX_KEY_LINE_BYTES = 8192;
+const MAX_RSA_BITS = 16384;
+
 class SshReader {
   private offset = 0;
   constructor(private readonly bytes: Uint8Array) {}
@@ -19,11 +22,12 @@ class SshReader {
   }
 }
 
-function decodeKey(value: string): Uint8Array {
+function decodeKey(value: string): { bytes: Uint8Array; canonical: string } {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) throw new Error("Invalid SSH key encoding.");
   const binary = atob(value);
-  if (btoa(binary).replace(/=+$/, "") !== value.replace(/=+$/, "")) throw new Error("Noncanonical SSH key encoding.");
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  const canonical = btoa(binary);
+  if (canonical !== value) throw new Error("Noncanonical SSH key encoding.");
+  return { bytes: Uint8Array.from(binary, (char) => char.charCodeAt(0)), canonical };
 }
 
 function unsignedInteger(bytes: Uint8Array): bigint {
@@ -36,6 +40,9 @@ function positiveMpint(bytes: Uint8Array): bigint {
   const first = bytes[0];
   if (first === undefined || first >= 128) throw new Error("SSH integers must be positive.");
   if (first === 0 && (bytes[1] ?? 0) < 128) throw new Error("Noncanonical SSH integer.");
+  const offset = first === 0 ? 1 : 0;
+  const bits = (bytes.length - offset - 1) * 8 + Math.floor(Math.log2(bytes[offset] ?? 0)) + 1;
+  if (bits > MAX_RSA_BITS) throw new Error("RSA integers cannot exceed 16384 bits.");
   return unsignedInteger(bytes);
 }
 
@@ -70,8 +77,10 @@ function validatePoint(curveName: z.infer<typeof CurveSchema>, point: Uint8Array
 }
 
 function validateRsa(reader: SshReader): void {
-  const exponent = positiveMpint(reader.field());
-  const modulus = positiveMpint(reader.field());
+  const exponentBytes = reader.field();
+  const modulusBytes = reader.field();
+  const modulus = positiveMpint(modulusBytes);
+  const exponent = positiveMpint(exponentBytes);
   if (exponent < 3n || exponent % 2n !== 1n || exponent >= modulus) throw new Error("Invalid RSA exponent.");
   if (modulus.toString(2).length < 2048 || modulus % 2n !== 1n) throw new Error("RSA keys must have at least 2048 bits.");
 }
@@ -94,15 +103,17 @@ function validateKey(type: PublicKeyType, reader: SshReader): void {
 }
 
 export function parsePublicKey(value: string): ParsedPublicKey {
+  if (value.length > MAX_KEY_LINE_BYTES || new TextEncoder().encode(value).byteLength > MAX_KEY_LINE_BYTES) throw new Error("SSH public key lines cannot exceed 8 KiB.");
   if (/[\r\n]/.test(value)) throw new Error("An SSH public key must occupy one line.");
   const [rawType, encoded] = value.trim().split(/[ \t]+/);
   const type = KeyTypeSchema.parse(rawType);
   if (encoded === undefined) throw new Error("Missing SSH public key data.");
-  const reader = new SshReader(decodeKey(encoded));
+  const { bytes, canonical } = decodeKey(encoded);
+  const reader = new SshReader(bytes);
   if (new TextDecoder("utf-8", { fatal: true }).decode(reader.field()) !== type) throw new Error("SSH key types differ.");
   validateKey(type, reader);
   reader.end();
-  return { type, public_key: `${type} ${encoded}` };
+  return { type, public_key: `${type} ${canonical}` };
 }
 
 export const PublicKeySchema = z.string().transform((value, context) => {

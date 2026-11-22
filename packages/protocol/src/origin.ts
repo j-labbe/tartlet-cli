@@ -1,10 +1,10 @@
 import { z } from "zod";
+import { HttpsUrlSchema } from "./primitives.js";
 
 export function normalizeOrigin(value: string): string {
   if (!/^https:\/\/[^/?#]+\/?$/i.test(value) || /[\\\s]/.test(value)) throw new Error("Expected an HTTPS origin.");
-  const url = new URL(value);
-  if (url.protocol !== "https:" || url.username || url.password) throw new Error("An HTTPS origin without credentials is required.");
-  if (url.pathname !== "/" || url.search || url.hash) throw new Error("An origin cannot contain a path, query or fragment.");
+  const url = new URL(HttpsUrlSchema.parse(value));
+  if (url.port === "0" || url.hostname.endsWith(".")) throw new Error("Origins cannot use port zero or a trailing dot.");
   return url.origin;
 }
 

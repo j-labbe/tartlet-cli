@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ProtocolFailureSchema } from "./errors.js";
 import { TaskLabelSchema, VmNameSchema } from "./ids.js";
-import { NonceSchema, HostSchema, PortSchema, TimestampSchema } from "./primitives.js";
+import { NonceSchema, HostSchema, HostKeyAliasSchema, SshUserSchema, PortSchema, TimestampSchema } from "./primitives.js";
 import { JwsCompactSchema } from "./cloud.js";
 import { PublicKeySchema, parsePublicKey } from "./ssh-keys.js";
 
@@ -15,25 +15,26 @@ export const SetupSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const KnownHostsLineSchema = z.string().refine((value) => {
+  if (/\p{Cc}/u.test(value)) return false;
   const [alias, ...parts] = value.split(" ");
-  if (!alias || /[\s,@!*?]/.test(alias)) return false;
+  if (!HostKeyAliasSchema.safeParse(alias).success) return false;
   try { return parsePublicKey(parts.join(" ")).public_key === parts.join(" "); } catch { return false; }
 }, "Expected an alias followed by a pinned SSH public key, without options or comments.");
 const connection = {
-  host: HostSchema, port: PortSchema, user: z.string().min(1),
-  host_key_alias: z.string().regex(/^[^\s,@!*?]+$/), known_hosts_line: KnownHostsLineSchema,
+  host: HostSchema, port: PortSchema, user: SshUserSchema,
+  host_key_alias: HostKeyAliasSchema, known_hosts_line: KnownHostsLineSchema,
 };
 const matchingAlias = (value: { host_key_alias: string; known_hosts_line: string }) => value.known_hosts_line.startsWith(`${value.host_key_alias} `);
 export const SshConnectionSchema = z.strictObject({ ...connection, ssh_options: z.string(), command: z.string() }).refine(matchingAlias, "Pinned host key alias does not match.");
 const progress = { completed_bytes: z.string().regex(/^\d+$/), total_bytes: z.string().regex(/^\d+$/), percent: z.number().min(0).max(100), seconds_left: z.number().min(0).optional(), message: z.string() };
 export const VmHomeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("none") }),
-  z.strictObject({ kind: z.literal("host"), host: z.string(), path: z.string(), mount_name: z.string() }),
-  z.strictObject({ kind: z.literal("nas"), path: z.string(), mount_name: z.string() }),
+  z.strictObject({ kind: z.literal("host"), host: HostSchema, path: z.string(), mount_name: z.string().min(1).max(255) }),
+  z.strictObject({ kind: z.literal("nas"), path: z.string(), mount_name: z.string().min(1).max(255) }),
   z.strictObject({
     kind: z.literal("volume"), health: z.enum(["healthy", "degraded", "unavailable", "unknown"]), mode: z.enum(["memory", "durable"]),
     copy_count: z.number().int().min(0), reason: z.string().optional(), safety: z.string(),
-    copies: z.array(z.strictObject({ host: z.string(), replica: z.string().optional(), role: z.enum(["primary", "copy", "filling", "stale"]) })),
+    copies: z.array(z.strictObject({ host: HostSchema, replica: z.string().min(1).max(128).optional(), role: z.enum(["primary", "copy", "filling", "stale"]) })),
     progress: z.discriminatedUnion("phase", [
       z.strictObject({ phase: z.literal("filling"), ...progress }),
       z.strictObject({ phase: z.literal("recovering"), ...progress, completed_bytes: progress.completed_bytes.optional(), total_bytes: progress.total_bytes.optional(), percent: progress.percent.optional() }),
@@ -50,9 +51,9 @@ export const VmConnectionSchema = z.strictObject({ name: z.string(), guest_port:
 ]) });
 export const VmSchema = z.strictObject({
   name: VmNameSchema, label: TaskLabelSchema.optional(), status: z.enum(["starting", "running", "failed", "unknown"]),
-  detail: z.string().optional(), host: HostSchema.optional(), image: z.string(), image_id: z.string().optional(), image_label: z.string().optional(),
+  detail: z.string().optional(), host: HostSchema.optional(), image: z.string(), image_id: z.string().min(1).max(128).optional(), image_label: z.string().optional(),
   size: z.strictObject({ cpu: z.number().int().positive().optional(), memory_mib: z.number().int().positive().optional(), disk_gib: z.number().int().positive().optional() }),
-  login: z.string().optional(), network: z.enum(["shared", "isolated", "bridged"]), persistent_home: z.boolean(), home: VmHomeSchema,
+  login: SshUserSchema.optional(), network: z.enum(["shared", "isolated", "bridged"]), persistent_home: z.boolean(), home: VmHomeSchema,
   guest_home_path: z.string().optional(), connect: z.array(VmConnectionSchema), created_at: TimestampSchema.optional(),
   ready: z.boolean(), setup: SetupSchema, ssh_keys_installed: z.boolean(), reason: z.string(), warnings: z.array(z.string()),
   ssh: SshConnectionSchema.optional(), error: ProtocolFailureSchema.optional(),

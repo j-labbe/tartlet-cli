@@ -12,7 +12,7 @@ async function rawSign(header, payload) {
   return `${input}.${Buffer.from(signature).toString("base64url")}`;
 }
 async function sign(payload, extra = {}) { return p.signJws({ payload, private_key: keys.privateKey, ...extra }); }
-const verify = (jws, extra = {}) => p.verifyJws({ jws, public_key: keys.publicKey, schema: p.ServerProofPayloadSchema, expected: { server_id: f.serverId, origin: f.proof.origin, nonce: f.nonce }, now: 1000, ...extra });
+const verify = (jws, extra = {}) => p.verifyServerProof({ jws, public_key: keys.publicKey, expected: { server_id: f.serverId, origin: f.proof.origin, nonce: f.nonce }, now: 1000, ...extra });
 
 test("EdDSA JWS interoperates with independent Web Crypto verification", async () => {
   const jws = await sign(f.proof, { kid: "example-key-1" });
@@ -44,16 +44,16 @@ test("expiry, issuance and not-before enforce the 60-second skew", async () => {
   assert.deepEqual(await verify(jws, { now: 940 }), f.proof);
   await assert.rejects(verify(jws, { now: 939 }));
   const token = await sign({ ...f.claims, nbf: 1061 });
-  await assert.rejects(p.verifyJws({ jws: token, public_key: keys.publicKey, schema: p.IdentityTokenClaimsSchema, expected: {}, now: 1000 }));
+  await assert.rejects(p.verifyIdentityToken({ jws: token, public_key: keys.publicKey, expected: { iss: f.claims.iss, aud: f.serverId, nonce: f.nonce, org: f.orgId }, now: 1000 }));
   const valid = await sign({ ...f.claims, nbf: 1060 });
-  assert.equal((await p.verifyJws({ jws: valid, public_key: keys.publicKey, schema: p.IdentityTokenClaimsSchema, expected: {}, now: 1000 })).nbf, 1060);
+  assert.equal((await p.verifyIdentityToken({ jws: valid, public_key: keys.publicKey, expected: { iss: f.claims.iss, aud: f.serverId, nonce: f.nonce, org: f.orgId }, now: 1000 })).nbf, 1060);
   await assert.rejects(verify(await rawSign({ alg: "EdDSA" }, { ...f.proof, exp: 1000 })));
 });
 test("verifies every signed artifact and requires all context expectations", async () => {
   const cases = [
     [f.hello, p.verifyHello, { server_id: f.serverId, nonce: f.nonce }],
     [f.poll, p.verifyEnrollmentPoll, { device_code: f.poll.device_code }],
-    [f.approval, p.verifyEnrollmentApproval, { server_id: f.serverId, org_id: f.orgId, server_public_key: f.rawPublicKey, approver: f.person, nonce: f.nonce }],
+    [f.approval, p.verifyEnrollmentApproval, { mode: "initial", server_public_key: f.rawPublicKey, approver_iss: f.person.iss, nonce: f.nonce }],
     [f.proof, p.verifyServerProof, { server_id: f.serverId, origin: f.proof.origin, nonce: f.nonce }],
     [f.claims, p.verifyIdentityToken, { iss: f.claims.iss, aud: f.serverId, nonce: f.nonce, org: f.orgId }],
   ];
@@ -81,7 +81,7 @@ test("each artifact verifier rejects every other signed artifact type", async ()
   const cases = [
     [f.hello, p.verifyHello, { server_id: f.serverId, nonce: f.nonce }],
     [f.poll, p.verifyEnrollmentPoll, { device_code: f.poll.device_code }],
-    [f.approval, p.verifyEnrollmentApproval, { server_id: f.serverId, org_id: f.orgId, server_public_key: f.rawPublicKey, approver: f.person, nonce: f.nonce }],
+    [f.approval, p.verifyEnrollmentApproval, { mode: "initial", server_public_key: f.rawPublicKey, approver_iss: f.person.iss, nonce: f.nonce }],
     [f.proof, p.verifyServerProof, { server_id: f.serverId, origin: f.proof.origin, nonce: f.nonce }],
     [f.claims, p.verifyIdentityToken, { iss: f.claims.iss, aud: f.serverId, nonce: f.nonce, org: f.orgId }],
   ];
