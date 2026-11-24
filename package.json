@@ -12,15 +12,17 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
-    "typecheck": "npm run typecheck --workspaces",
+    "build": "npm run build --workspace @tartlet/protocol && npm run build --workspace @tartlet/cli",
+    "typecheck": "npm run build --workspace @tartlet/protocol && npm run typecheck --workspaces",
     "lint": "eslint .",
-    "test": "npm run test --workspaces",
-    "pack:check": "npm pack --workspace @tartlet/protocol --dry-run --json"
+    "test": "npm run build --workspace @tartlet/protocol && npm run test --workspaces",
+    "pack:check": "npm pack --workspace @tartlet/protocol --workspace @tartlet/cli --dry-run --json",
+    "pack:smoke": "node scripts/check-pack.mjs"
   },
   "devDependencies": {
-    "typescript": "~5.9.3",
     "eslint": "^9.39.1",
+    "js-yaml": "^4.3.2",
+    "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0"
   }
 }
