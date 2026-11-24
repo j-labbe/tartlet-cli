@@ -59,7 +59,9 @@ $acl.AddAccessRule($rule)
   return ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")];
 }
 export async function windowsPrivate(directory: string, execute: (file: string, args: string[], options: { windowsHide: boolean; env: NodeJS.ProcessEnv }) => Promise<unknown> = exec) {
-  await execute("powershell.exe", windowsAclArguments(), { windowsHide: true, env: { ...process.env, TARTLET_ACL_DIRECTORY: directory } });
+  const env: NodeJS.ProcessEnv = { ...process.env, TARTLET_ACL_DIRECTORY: directory };
+  for (const name of Object.keys(env)) if (name.toLowerCase() === "psmodulepath") delete env[name];
+  await execute("powershell.exe", windowsAclArguments(), { windowsHide: true, env });
 }
 async function windowsProtectedDirectory(directory: string, protect: typeof windowsPrivate) {
   const marker = path.join(directory, ".windows-acl");

@@ -27,6 +27,22 @@ test("Windows ACL replaces inherited and explicit access with the current accoun
   assert.match(script, /FullControl.*ContainerInherit, ObjectInherit.*Allow/); assert.ok(!script.includes(directory));
   await assert.rejects(windowsPrivate(directory, async () => { throw new Error("ACL denied"); }), /ACL denied/);
 });
+test("Windows PowerShell starts without inherited module paths and retains the other environment", async () => {
+  const modulePath = "C:\\Example\\PowerShell\\7\\Modules";
+  for (const name of ["PSModulePath", "PSMODULEPATH"]) {
+    const prior = process.env[name]; process.env[name] = modulePath;
+    try {
+      const parent = { ...process.env }; let options;
+      await windowsPrivate("C:\\Example\\private", async (_program, _args, input) => { options = input; });
+      assert.ok(!Object.keys(options.env).some((key) => key.toLowerCase() === "psmodulepath"));
+      assert.equal(options.env.TARTLET_ACL_DIRECTORY, "C:\\Example\\private");
+      for (const [key, value] of Object.entries(parent)) {
+        if (key.toLowerCase() !== "psmodulepath" && key !== "TARTLET_ACL_DIRECTORY") assert.equal(options.env[key], value);
+      }
+      assert.equal(process.env[name], modulePath);
+    } finally { if (prior === undefined) delete process.env[name]; else process.env[name] = prior; }
+  }
+});
 test("Windows profile and copy paths preserve drive letters and spaces", () => {
   assert.equal(configDirectory("win32", { LOCALAPPDATA: "C:\\Example\\Agent 1\\AppData\\Local" }, "C:\\Example\\Agent 1"), "C:\\Example\\Agent 1\\AppData\\Local\\tartlet");
   assert.deepEqual(copyLocation("C:\\Example\\file.txt", "win32"), { kind: "local", path: "C:\\Example\\file.txt" });

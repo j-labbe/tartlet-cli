@@ -190,7 +190,7 @@ test("fix1.nit public npm package metadata", async () => {
 });
 test("fix1.nit CI uses main pushes, pull requests and disposable checkout credentials", async () => {
   const workflow = await rootFile(".github/workflows/ci.yml");
-  assert.match(workflow, /push:\n\s+branches: \[main\]/);
+  assert.match(workflow, /push:\r?\n\s+branches: \[main\]/);
   assert.match(workflow, /pull_request:/);
   assert.match(workflow, /persist-credentials: false/);
   for (const line of workflow.split("\n").filter((line) => line.includes("uses:"))) assert.match(line, /@[a-f0-9]{40}\b/);

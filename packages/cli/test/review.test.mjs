@@ -164,7 +164,9 @@ $checks = foreach ($path in $paths) {
   [pscustomobject]@{ protected = $acl.AreAccessRulesProtected; only_current = ($allowed.Count -gt 0 -and $other.Count -eq 0) }
 }
 ConvertTo-Json -InputObject @($checks) -Compress`;
-  const { stdout } = await exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { windowsHide: true, env: { ...process.env, TARTLET_TEST_PATHS: JSON.stringify([directory, file]) } });
+  const env = { ...process.env, TARTLET_TEST_PATHS: JSON.stringify([directory, file]) };
+  for (const name of Object.keys(env)) if (name.toLowerCase() === "psmodulepath") delete env[name];
+  const { stdout } = await exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { windowsHide: true, env });
   const checks = JSON.parse(stdout); assert.equal(checks[0].protected, true);
   assert.ok(checks.every((value) => value.only_current));
 });
