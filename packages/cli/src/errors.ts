@@ -6,7 +6,7 @@ export function keepSecret(value: string): string { secrets.add(value); return v
 export function plain(value: string): string { return value.replace(/[\p{Cc}\p{Cf}]/gu, " ").slice(0, 2048); }
 export function safeMessage(error: unknown): string {
   let message = error instanceof Error ? error.message : "The command failed.";
-  for (const secret of secrets) message = message.replaceAll(secret, "[redacted]");
+  for (const secret of [...secrets].sort((left, right) => right.length - left.length)) message = message.replaceAll(secret, "[redacted]");
   return plain(message);
 }
 export class HttpError extends Error {

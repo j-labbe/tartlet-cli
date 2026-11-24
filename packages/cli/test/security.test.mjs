@@ -40,6 +40,8 @@ test("diagnostics redact complete tokens before limiting output", () => {
   const value = keepSecret(secret()), long = keepSecret(randomBytes(4000).toString("base64url"));
   const message = safeMessage(new Error(`${value}\n${long}`));
   assert.equal(message, "[redacted] [redacted]"); assert.ok(!message.includes(value));
+  const prefix = keepSecret(secret()), overlapping = keepSecret(`${prefix}${secret()}`);
+  assert.ok(safeMessage(new Error(overlapping)) === "[redacted]", "Overlapping credentials must be fully redacted.");
   assert.match(networkError({ code: "ENOTFOUND" }).message, /Turn on Tailscale/);
   assert.match(networkError({ code: "ENETUNREACH" }).message, /network/);
   assert.match(networkError({ code: "ECONNREFUSED" }).message, /server is down/);
