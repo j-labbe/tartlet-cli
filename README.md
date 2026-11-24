@@ -1,15 +1,13 @@
 # Tartlet CLI
 
-This repository holds the public npm packages for Tartlet, a self-hosted Mac VM console.
+Public npm packages for Tartlet, a self-hosted Mac VM console.
 
-## Packages
-
-- `@tartlet/protocol` lives in `packages/protocol`. It holds Zod schemas, TypeScript types, and small pure helpers that the Tartlet server, its cloud sign-in service, and the CLI share.
-- `@tartlet/cli` is coming soon. It will be a command-line tool that you run with `npx @tartlet/cli@<version>`. This package is not built yet.
+- [`@tartlet/cli`](packages/cli/README.md) provides the `tartlet` command for sign-in, SSH, file copy, and native SSH proxy connections.
+- [`@tartlet/protocol`](packages/protocol/README.md) provides shared schemas, types, and pure helpers.
 
 ## Build and test
 
-Install Node.js 22.14.0 or later, then run these commands from the repository root:
+Install Node.js 22.14 or later, then run these commands from the repository root:
 
 ```sh
 npm ci
@@ -17,16 +15,23 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
+npm run pack:check
+npm run pack:smoke
 ```
 
 ## Releases
 
-CI stages each release with npm trusted publishing and provenance. A maintainer approves each release before npm publishes it.
+The release workflow stages both npm archives. Publishing uses npm trusted
+publishing with provenance and waits for approval in the `npm-release` environment.
+Configure that environment with the owner's required review, and configure each
+npm package's trusted publisher before enabling publication. The owner uses
+2FA for release approval. The workflow creates no tags.
 
 ## Security
 
-Report security issues privately through GitHub's private vulnerability reporting on this repository. Do not open a public issue for a vulnerability.
+Report security issues through this repository's private vulnerability reporting.
+Do not open a public issue for a vulnerability.
 
 ## License
 
-This repository uses the Apache-2.0 license. See `LICENSE`.
+Apache-2.0. See `LICENSE`.

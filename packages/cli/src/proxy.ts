@@ -1,0 +1,49 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import { privateWrite } from "./storage.js";
+import { openTunnel } from "./tunnel.js";
+import type { Access } from "./access.js";
+import type { TerminalIO } from "./ssh.js";
+
+export function sshConfigValue(value: string): string {
+  if (/[\r\n\0]/.test(value)) throw new Error("SSH configuration paths must fit on one line.");
+  return `"${value.replaceAll("\\", "/").replaceAll('"', '\\"').replaceAll("%", "%%")}"`;
+}
+export function commandArgument(value: string, platform = process.platform): string {
+  if (/[\r\n\0]/.test(value)) throw new Error("The proxy command path must fit on one line.");
+  if (platform === "win32") {
+    if (/["&|<>^%]/.test(value)) throw new Error("Move the CLI and configuration folder to Windows paths without shell metacharacters to use native SSH.");
+    return `"${value.replaceAll("\\", "/")}"`;
+  }
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+export function nativeConfig(access: Access, knownHosts: string, directory: string, executable = process.execPath, entry = fileURLToPath(new URL("main.js", import.meta.url)), platform = process.platform): string {
+  const args = [executable, entry, "proxy", access.vm, "--profile", access.profile.name];
+  const command = `${platform === "win32" ? "set " : "env "}${platform === "win32" ? `"TARTLET_CONFIG_DIR=${directory}" && ` : `TARTLET_CONFIG_DIR=${commandArgument(directory, platform)} `}${args.map((part) => commandArgument(part, platform)).join(" ")}`;
+  if (platform === "win32") commandArgument(directory, platform);
+  const identity = access.key.kind === "file" ? access.key.private_path : path.join(path.dirname(knownHosts), "identity.pub");
+  return [
+    `Host ${access.vm}`, `  HostName ${access.vm}`, `  User ${access.connection.user}`, `  HostKeyAlias ${access.connection.host_key_alias}`,
+    `  UserKnownHostsFile ${sshConfigValue(knownHosts)}`, "  GlobalKnownHostsFile none", "  StrictHostKeyChecking yes", "  CheckHostIP no", "  UpdateHostKeys no",
+    `  IdentityFile ${sshConfigValue(identity)}`, "  IdentitiesOnly yes", "  ServerAliveInterval 15", "  ServerAliveCountMax 3",
+    `  ProxyCommand ${command.replaceAll("%", "%%")}`, "",
+  ].join("\n");
+}
+export async function writeNativeConfig(access: Access, directory: string) {
+  const id = createHash("sha256").update(`${access.profile.name}\0${access.vm}`).digest("hex").slice(0, 32);
+  const folder = path.join(directory, "connections", id), knownHosts = path.join(folder, "known_hosts"), config = path.join(folder, "ssh_config");
+  await privateWrite(knownHosts, `${access.connection.known_hosts_line}\n`);
+  if (access.key.kind === "agent") await privateWrite(path.join(folder, "identity.pub"), `${access.key.public_key}\n`);
+  await privateWrite(config, nativeConfig(access, knownHosts, directory));
+  return config;
+}
+export async function proxy(access: Access, io: TerminalIO) {
+  const tunnel = await openTunnel(access);
+  await new Promise<void>((resolve, reject) => {
+    const clean = () => { io.stdin.unpipe(tunnel); io.stdin.pause(); tunnel.unpipe(io.stdout); tunnel.destroy(); };
+    tunnel.once("error", (error) => { clean(); reject(error); });
+    tunnel.once("close", () => { clean(); resolve(); });
+    io.stdin.pipe(tunnel); tunnel.pipe(io.stdout, { end: false });
+  });
+}
