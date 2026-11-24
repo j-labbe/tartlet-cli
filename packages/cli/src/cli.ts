@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { createInterface } from "node:readline/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import path from "node:path";
 import { login, type LoginIO } from "./profiles.js";
 import { link } from "./keys.js";
 import { authorize } from "./access.js";
@@ -10,6 +11,7 @@ import { ssh, type TerminalIO } from "./ssh.js";
 import { copy, copyPlan } from "./copy.js";
 import { proxy, writeNativeConfig } from "./proxy.js";
 import type { Endpoint } from "./http.js";
+import { VERSION } from "./version.js";
 
 export const HELP = `Usage: tartlet <command> [options]
 
@@ -28,6 +30,7 @@ Commands:
 
 Options:
   --profile <name>  Use a saved server profile
+  --config-dir <path>  Use a different configuration folder
   --label           Match <vm> against task labels only
   --help            Show this help
   --version         Show the version
@@ -64,7 +67,7 @@ export function defaultIO(): LoginIO & TerminalIO {
 }
 const string: { type: "string" } = { type: "string" }, boolean: { type: "boolean" } = { type: "boolean" };
 function parse(command: string, args: string[]) {
-  const common = { profile: string, help: boolean, version: boolean };
+  const common = { profile: string, "config-dir": string, help: boolean, version: boolean };
   const extra = commandOptions(command);
   const options: Record<string, { type: "string" | "boolean" }> = { ...common, ...extra };
   return parseArgs({ args, allowPositionals: true, options });
@@ -100,7 +103,7 @@ function stringOption(args: ReturnType<typeof parse>, key: string) {
 }
 function immediateOutput(command: string | undefined) {
   if (!command || command === "--help" || command === "-h") return HELP;
-  if (command === "--version") return "0.2.0\n";
+  if (command === "--version") return `${VERSION}\n`;
   return undefined;
 }
 export interface Runtime { directory?: string; io?: LoginIO & TerminalIO; cloud?: Endpoint }
@@ -111,8 +114,8 @@ export async function run(argv: string[], runtime: Runtime = {}): Promise<number
   if (!command) return 0;
   const { args, remoteCommand } = parseCommand(command, argv);
   if (args.values.help) { io.stdout.write(HELP); return 0; }
-  if (args.values.version) { io.stdout.write("0.2.0\n"); return 0; }
-  const directory = runtime.directory ?? configDirectory();
+  if (args.values.version) { io.stdout.write(`${VERSION}\n`); return 0; }
+  const directory = path.resolve(stringOption(args, "config-dir") ?? runtime.directory ?? configDirectory());
   await privateDirectory(directory);
   return execute({ command, args, io, directory, remoteCommand, ...(runtime.cloud ? { cloud: runtime.cloud } : {}) });
 }

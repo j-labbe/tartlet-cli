@@ -14,6 +14,9 @@ npx @tartlet/cli login
 The examples below use `tartlet`. If you did not install the CLI globally, use
 `npx @tartlet/cli` in its place.
 
+During installation, npm or npx may try to compile `ssh2`'s optional native helper.
+The CLI also runs without that helper.
+
 ### Sign in
 
 ```sh
@@ -56,9 +59,11 @@ tartlet cp vm-example:/tmp/file ./file
 ### Use OpenSSH or VS Code
 
 `tartlet proxy vm-example` sends an SSH connection through standard input and output,
-so OpenSSH can use it as a `ProxyCommand`. Let the CLI write the config for you:
+so OpenSSH can use it as a `ProxyCommand`. Install the CLI globally for native SSH
+and VS Code, because the npx cache can move. Then let the CLI write the config for you:
 
 ```sh
+npm install --global @tartlet/cli
 tartlet proxy vm-example --config
 ssh -F /path/to/ssh_config vm-example
 ssh -F /path/to/ssh_config -N -L 8080:127.0.0.1:8080 vm-example
@@ -73,7 +78,7 @@ Host vm-example
   User <vm-user>
   StrictHostKeyChecking yes
   IdentityFile "/path/to/key"
-  ProxyCommand env TARTLET_CONFIG_DIR='/path/to/config' '/path/to/node' '/path/to/main.js' 'proxy' 'vm-example' '--profile' 'example.com'
+  ProxyCommand '/path/to/node' '/path/to/main.js' 'proxy' 'vm-example' '--profile' 'example.com' '--config-dir' '/path/to/config'
 ```
 
 In VS Code, choose this file as the SSH configuration file. Do not turn off strict
@@ -119,7 +124,7 @@ configuration folder:
 - Linux: `$XDG_CONFIG_HOME/tartlet`, or `~/.config/tartlet`
 - Windows: `%LOCALAPPDATA%\tartlet`, with access limited to your account
 
-Set `TARTLET_CONFIG_DIR` to use a different folder. The CLI does not write to your
+Set `TARTLET_CONFIG_DIR` or pass `--config-dir <path>` to use a different folder. The CLI does not write to your
 `.ssh` folder.
 
 SSH and file traffic goes straight to your server over an HTTPS WebSocket. The Tartlet

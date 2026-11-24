@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { get } from "node:http";
 import { signJws, CloudAccessTokenClaimsSchema, PublicKeySchema } from "@tartlet/protocol";
 import ssh2 from "ssh2";
-import { deviceSignIn, discover, loopback, verifyCloudToken } from "../dist/oauth.js";
+import { deviceSignIn, discover, loopback, cloudTokenClaims } from "../dist/oauth.js";
 import { tlsOptions, json, localTrust, sameOriginUrl, requestJson } from "../dist/http.js";
 import { configDirectory, windowsPrivate, readState, changeState } from "../dist/storage.js";
 import { copyLocation, copyPlan } from "../dist/copy.js";
@@ -31,8 +31,8 @@ test("Windows profile and copy paths preserve drive letters and spaces", () => {
   assert.equal(configDirectory("win32", { LOCALAPPDATA: "C:\\Example\\Agent 1\\AppData\\Local" }, "C:\\Example\\Agent 1"), "C:\\Example\\Agent 1\\AppData\\Local\\tartlet");
   assert.deepEqual(copyLocation("C:\\Example\\file.txt", "win32"), { kind: "local", path: "C:\\Example\\file.txt" });
   assert.equal(copyLocation("vm-example:/tmp/file", "win32").kind, "remote");
-  assert.throws(() => commandArgument("C:\\Example\\%PATH%", "win32"), /metacharacters/);
-  assert.equal(commandArgument("C:\\Example\\Agent 1", "win32"), '"C:/Example/Agent 1"');
+  assert.equal(commandArgument("C:\\Example\\%PATH%", "win32"), '"C:\\Example\\%PATH%"');
+  assert.equal(commandArgument("C:\\Example\\Agent 1", "win32"), '"C:\\Example\\Agent 1"');
   assert.equal(sshConfigValue("C:\\Example\\Agent 1\\known_hosts"), '"C:/Example/Agent 1/known_hosts"');
   assert.throws(() => copyPlan("vm-example:/file", "example:/file"), /one local file/);
 });
@@ -83,15 +83,19 @@ test("HTTPS CA pin tampering fails before any request", async (t) => {
   await assert.rejects(json({ endpoint: { ...f.endpoint, trust: localTrust(wrong.certs.cert) }, url: `${f.endpoint.origin}/.well-known/oauth-authorization-server` }, { safeParse: () => ({ success: true }) }));
   assert.equal(f.state.requests.length, before);
 });
-test("cloud tokens require the protocol signature, audience, and expiry", async (t) => {
-  const cloud = await fake(t, { cloud: true }), metadata = await discover(cloud.endpoint, true), now = Math.floor(Date.now() / 1000);
+test("cloud token claims retain issuer and expiry checks without signature verification", async (t) => {
+  const cloud = await fake(t, { cloud: true }), now = Math.floor(Date.now() / 1000);
   const claims = { typ: "tartlet-cloud-access", iss: cloud.endpoint.origin, aud: cloud.endpoint.origin, sub: `acct_${"a".repeat(26)}`, iat: now, nbf: now, exp: now + 600 };
   const sign = (payload, key = cloud.signing.privateKey) => signJws({ payload: CloudAccessTokenClaimsSchema.parse(payload), private_key: key, kid: "test" });
-  await verifyCloudToken(cloud.endpoint, metadata, await sign(claims));
-  await assert.rejects(verifyCloudToken(cloud.endpoint, metadata, await sign({ ...claims, iss: "https://example.com", aud: "https://example.com" })), /expected fields/);
-  await assert.rejects(verifyCloudToken(cloud.endpoint, metadata, await sign({ ...claims, iat: now - 1000, nbf: now - 1000, exp: now - 400 })), /expired/);
+  assert.equal(cloudTokenClaims(await sign(claims), cloud.endpoint.origin).exp, claims.exp);
+  assert.throws(() => cloudTokenClaims("invalid", cloud.endpoint.origin), /invalid sign-in token/);
+  const wrongIssuer = await sign({ ...claims, iss: "https://example.com", aud: "https://example.com" });
+  assert.throws(() => cloudTokenClaims(wrongIssuer, cloud.endpoint.origin), /different issuer/);
+  const expired = await sign({ ...claims, iat: now - 1000, nbf: now - 1000, exp: now - 400 });
+  assert.throws(() => cloudTokenClaims(expired, cloud.endpoint.origin), /expired/);
   const other = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]);
-  await assert.rejects(verifyCloudToken(cloud.endpoint, metadata, await sign(claims, other.privateKey)), /signature/);
+  assert.equal(cloudTokenClaims(await sign(claims, other.privateKey), cloud.endpoint.origin).sub, claims.sub);
+  assert.equal(cloud.state.requests.length, 0);
 });
 test("Ed25519 keys retain a leading zero public byte and work with the SSH parser", () => {
   let chosen;

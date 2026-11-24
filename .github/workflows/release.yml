@@ -33,7 +33,7 @@ jobs:
           path: artifacts/*.tgz
           if-no-files-found: error
   publish:
-    if: inputs.publish
+    if: inputs.publish && github.ref == 'refs/heads/main'
     needs: stage
     environment: npm-release
     runs-on: ubuntu-latest

@@ -13,15 +13,13 @@ export function sshConfigValue(value: string): string {
 export function commandArgument(value: string, platform = process.platform): string {
   if (/[\r\n\0]/.test(value)) throw new Error("Paths in the proxy command cannot contain line breaks.");
   if (platform === "win32") {
-    if (/["&|<>^%]/.test(value)) throw new Error("To use native SSH, move the CLI and its configuration folder to paths without shell metacharacters such as & or %.");
-    return `"${value.replaceAll("\\", "/")}"`;
+    return `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, "$1$1")}"`;
   }
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 export function nativeConfig(access: Access, knownHosts: string, directory: string, executable = process.execPath, entry = fileURLToPath(new URL("main.js", import.meta.url)), platform = process.platform): string {
-  const args = [executable, entry, "proxy", access.vm, "--profile", access.profile.name];
-  const command = `${platform === "win32" ? "set " : "env "}${platform === "win32" ? `"TARTLET_CONFIG_DIR=${directory}" && ` : `TARTLET_CONFIG_DIR=${commandArgument(directory, platform)} `}${args.map((part) => commandArgument(part, platform)).join(" ")}`;
-  if (platform === "win32") commandArgument(directory, platform);
+  const args = [executable, entry, "proxy", access.vm, "--profile", access.profile.name, "--config-dir", directory];
+  const command = args.map((part) => commandArgument(part, platform)).join(" ");
   const identity = access.key.kind === "file" ? access.key.private_path : path.join(path.dirname(knownHosts), "identity.pub");
   return [
     `Host ${access.vm}`, `  HostName ${access.vm}`, `  User ${access.connection.user}`, `  HostKeyAlias ${access.connection.host_key_alias}`,
@@ -41,9 +39,17 @@ export async function writeNativeConfig(access: Access, directory: string) {
 export async function proxy(access: Access, io: TerminalIO) {
   const tunnel = await openTunnel(access);
   await new Promise<void>((resolve, reject) => {
-    const clean = () => { io.stdin.unpipe(tunnel); io.stdin.pause(); tunnel.unpipe(io.stdout); tunnel.destroy(); };
-    tunnel.once("error", (error) => { clean(); reject(error); });
-    tunnel.once("close", () => { clean(); resolve(); });
+    let finished = false;
+    const finish = (error?: Error) => {
+      if (finished) return; finished = true;
+      io.stdin.unpipe(tunnel); io.stdin.pause(); tunnel.unpipe(io.stdout);
+      tunnel.off("end", ended); tunnel.off("close", ended); io.stdin.off("end", ended);
+      tunnel.destroy(); io.stdout.end();
+      if (error) reject(error); else resolve();
+    };
+    const ended = () => finish();
+    tunnel.once("error", finish); tunnel.once("end", ended); tunnel.once("close", ended); io.stdin.once("end", ended);
     io.stdin.pipe(tunnel); tunnel.pipe(io.stdout, { end: false });
+    if (io.stdin.readableEnded || tunnel.readableEnded) finish();
   });
 }

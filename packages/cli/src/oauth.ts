@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
-import { readUnverifiedJwsHeader, verifyCloudAccessToken } from "@tartlet/protocol";
+import { CloudAccessTokenClaimsSchema, JwsCompactSchema, CLOCK_SKEW_SECONDS } from "@tartlet/protocol";
 import { json, form, requestJson, sameOriginUrl, type Endpoint, type JsonRequest } from "./http.js";
 import { HttpError, keepSecret, responseError } from "./errors.js";
 import { TokensSchema, type Tokens } from "./storage.js";
@@ -11,7 +11,7 @@ export const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 const MetadataSchema = z.object({
   issuer: z.string(), authorization_endpoint: z.string(), token_endpoint: z.string(),
   registration_endpoint: z.string().optional(), device_authorization_endpoint: z.string().optional(),
-  jwks_uri: z.string().optional(), code_challenge_methods_supported: z.array(z.string()),
+  code_challenge_methods_supported: z.array(z.string()),
 });
 export type Metadata = z.infer<typeof MetadataSchema>;
 export interface SignInIO { say: (message: string) => void; open: (url: string) => Promise<void> }
@@ -20,7 +20,7 @@ export async function discover(endpoint: Endpoint, cloud = false): Promise<Metad
   const metadata = await json({ endpoint, url: `${endpoint.origin}${path}` }, MetadataSchema);
   if (new URL(metadata.issuer).origin !== endpoint.origin) throw new Error("The sign-in issuer does not match the server address.");
   if (!metadata.code_challenge_methods_supported.includes("S256")) throw new Error("The server does not support the required sign-in method (PKCE S256).");
-  for (const url of [metadata.authorization_endpoint, metadata.token_endpoint, metadata.registration_endpoint, metadata.device_authorization_endpoint, metadata.jwks_uri]) {
+  for (const url of [metadata.authorization_endpoint, metadata.token_endpoint, metadata.registration_endpoint, metadata.device_authorization_endpoint]) {
     if (url !== undefined) sameOriginUrl(endpoint.origin, url);
   }
   return metadata;
@@ -118,14 +118,16 @@ export async function deviceSignIn(input: SignIn, client_id: string, wait = dela
   }
   throw new HttpError(400, "expired_token", "The sign-in code expired. Run tartlet login again.");
 }
-const JwkSchema = z.object({ kty: z.literal("OKP"), crv: z.literal("Ed25519"), x: z.string(), kid: z.string().optional() });
-export async function verifyCloudToken(endpoint: Endpoint, metadata: Metadata, token: string) {
-  if (!metadata.jwks_uri) throw new Error("The cloud sign-in service did not publish its signing keys.");
-  const { kid } = readUnverifiedJwsHeader(token);
-  const jwks = await json({ endpoint, url: metadata.jwks_uri }, z.object({ keys: z.array(JwkSchema).max(32) }));
-  const matching = jwks.keys.filter((key) => key.kid === kid);
-  const key = matching[0];
-  if (!key || matching.length !== 1) throw new Error("The cloud sign-in token uses an unknown signing key.");
-  const public_key = await globalThis.crypto.subtle.importKey("jwk", key, "Ed25519", false, ["verify"]);
-  await verifyCloudAccessToken({ jws: token, public_key, expected: { iss: endpoint.origin, aud: endpoint.origin } });
+function decodeCloudClaims(token: string) {
+  try {
+    const body = JwsCompactSchema.parse(token).split(".")[1] ?? "";
+    return CloudAccessTokenClaimsSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.from(body, "base64url"))));
+  } catch { throw new Error("The cloud returned an invalid sign-in token. Run tartlet login again."); }
+}
+export function cloudTokenClaims(token: string, issuer: string, now = Math.floor(Date.now() / 1000)) {
+  const claims = decodeCloudClaims(token);
+  if (claims.iss !== issuer || claims.aud !== issuer) throw new Error("The cloud sign-in token names a different issuer.");
+  if (now >= claims.exp + CLOCK_SKEW_SECONDS) throw new Error("Cloud sign-in has expired. Run tartlet login again.");
+  if (claims.nbf > now + CLOCK_SKEW_SECONDS || claims.iat > now + CLOCK_SKEW_SECONDS) throw new Error("Cloud sign-in is not valid yet. Check your clock and try again.");
+  return claims;
 }

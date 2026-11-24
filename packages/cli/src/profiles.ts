@@ -1,7 +1,7 @@
 import { ServerListResponseSchema, normalizeOrigin, type ServerListResponse } from "@tartlet/protocol";
 import { json, localTrust, type Endpoint } from "./http.js";
-import { discover, signIn, verifyCloudToken, type SignInIO } from "./oauth.js";
-import { changeState, readState, readUtf8, selectProfile, TokensSchema, type Profile, type Trust } from "./storage.js";
+import { discover, signIn, cloudTokenClaims, type SignInIO } from "./oauth.js";
+import { changeState, readState, readUtf8, selectProfile, TokensSchema, ProfileSchema, type Profile, type Trust } from "./storage.js";
 import { form } from "./http.js";
 
 export interface LoginIO extends SignInIO { choose: (message: string, options: string[]) => Promise<number> }
@@ -13,7 +13,7 @@ function originOf(address: ServerListResponse["servers"][number]["addresses"][nu
 async function fromCloud(options: LoginOptions) {
   const cloud = options.cloud ?? { origin: "https://app.tartlet.io", trust: { kind: "webpki" } }, metadata = await discover(cloud, true);
   const { tokens } = await signIn({ endpoint: cloud, metadata, device: options.device, cloud: true, io: options.io });
-  await verifyCloudToken(cloud, metadata, tokens.access_token);
+  cloudTokenClaims(tokens.access_token, cloud.origin);
   const { servers } = await json({ endpoint: cloud, url: `${cloud.origin}/v1/servers`, headers: { Authorization: `Bearer ${tokens.access_token}` } }, ServerListResponseSchema);
   if (!servers.length) throw new Error("No servers are available for this account. Ask a server administrator for access.");
   const server = servers[await options.io.choose("Choose a server", servers.map((entry) => `${entry.name} (${entry.online ? "online" : "offline"})`))];
@@ -41,10 +41,11 @@ async function loginTrust(options: LoginOptions, saved: Profile | undefined): Pr
   return trust;
 }
 export async function login(options: LoginOptions): Promise<Profile> {
+  if (options.profile !== undefined) validProfileName(options.profile);
   const selected = await target(options), trust = await loginTrust(options, selected.saved);
+  const name = validProfileName(options.profile ?? selected.saved?.name ?? selected.server_id ?? defaultProfileName(selected.origin));
   const endpoint = { origin: selected.origin, trust }, metadata = await discover(endpoint);
   const result = await signIn({ endpoint, metadata, device: options.device, cloud: false, io: options.io });
-  const name = options.profile ?? selected.saved?.name ?? selected.server_id ?? new URL(selected.origin).host.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64);
   const profile: Profile = { name, ...endpoint, ...result, expires_at: Date.now() + result.tokens.expires_in * 1000, ...(selected.server_id ? { server_id: selected.server_id } : {}) };
   await changeState(options.directory, async (state) => {
     const previous = state.profiles.find((entry) => entry.name === name);
@@ -53,6 +54,15 @@ export async function login(options: LoginOptions): Promise<Profile> {
   });
   options.io.say(`Signed in to ${profile.origin} as profile ${profile.name}.`);
   return profile;
+}
+function defaultProfileName(origin: string) {
+  const url = new URL(origin), host = url.host.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "") || "server";
+  return `${url.hostname.startsWith("[") ? "ipv6-" : ""}${host}`.slice(0, 64);
+}
+function validProfileName(name: string) {
+  const parsed = ProfileSchema.shape.name.safeParse(name);
+  if (!parsed.success) throw new Error("Use a profile name of up to 64 letters, numbers, dots, dashes or underscores, starting with a letter or number.");
+  return parsed.data;
 }
 export async function connectedProfile(directory: string, name?: string): Promise<Profile> {
   return changeState(directory, async (state) => {

@@ -44,7 +44,7 @@ export async function requestJson(input: JsonRequest): Promise<{ status: number;
       });
     });
     req.on("timeout", () => req.destroy(Object.assign(new Error("The connection timed out."), { code: "ETIMEDOUT" })));
-    req.on("error", (error) => reject(networkError(error)));
+    req.on("error", (error) => reject(networkError(error, input.endpoint.origin)));
     req.end(input.body);
   });
 }

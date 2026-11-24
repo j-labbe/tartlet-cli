@@ -21,13 +21,17 @@ export function responseError(status: number, body: unknown): HttpError {
   return new HttpError(status, "request_failed", "The server could not complete the request.");
 }
 const CodeSchema = z.object({ code: z.string() });
-export function networkError(error: unknown): Error {
+const certificateErrors = new Set(["SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "DEPTH_ZERO_SELF_SIGNED_CERT", "ERR_TLS_CERT_ALTNAME_INVALID", "CERT_HAS_EXPIRED"]);
+const unreachableErrors = new Set(["ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH", "ETIMEDOUT"]);
+const refusedErrors = new Set(["ECONNREFUSED", "ECONNRESET"]);
+function unreachableMessage(origin: string | undefined) {
+  if (origin && new URL(origin).hostname === "app.tartlet.io") return "Cannot reach Tartlet cloud. Check your internet connection and try again.";
+  return "Cannot reach the server's network. Turn on Tailscale if the server is on a tailnet, then check the server address.";
+}
+export function networkError(error: unknown, origin?: string): Error {
   const parsed = CodeSchema.safeParse(error), code = parsed.success ? parsed.data.code : "";
-  switch (code) {
-    case "ENOTFOUND": case "EAI_AGAIN": case "EHOSTUNREACH": case "ENETUNREACH": case "ETIMEDOUT":
-      return Object.assign(new Error("Cannot reach the server's network. Turn on Tailscale if the server is on a tailnet, then check the server address."), { code });
-    case "ECONNREFUSED": case "ECONNRESET":
-      return new Error("The server is down or refused the connection. Check that Tartlet is running at the address you signed in to.");
-    default: return error instanceof Error ? error : new Error("The connection failed.");
-  }
+  if (certificateErrors.has(code)) return new Error("The server's HTTPS certificate is not trusted. If your administrator uses a local CA, run `tartlet login --server <url> --ca <root.pem>`.");
+  if (unreachableErrors.has(code)) return Object.assign(new Error(unreachableMessage(origin)), { code });
+  if (refusedErrors.has(code)) return new Error("The server is down or refused the connection. Check that Tartlet is running at the address you signed in to.");
+  return error instanceof Error ? error : new Error("The connection failed.");
 }

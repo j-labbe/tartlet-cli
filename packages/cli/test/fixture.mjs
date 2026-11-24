@@ -20,7 +20,7 @@ const exec = promisify(execFile), token = () => randomBytes(32).toString("base64
 const { Server, utils } = ssh2;
 export async function certificates() {
   const directory = await mkdtemp(path.join(tmpdir(), "tartlet-test-cert-")), key = path.join(directory, "key.pem"), cert = path.join(directory, "cert.pem");
-  await exec("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-keyout", key, "-out", cert, "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost", "-addext", "basicConstraints=critical,CA:TRUE"]);
+  await exec("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-keyout", key, "-out", cert, "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1,IP:::1,DNS:localhost", "-addext", "basicConstraints=critical,CA:TRUE"]);
   return { directory, key: await readFile(key), cert: await readFile(cert), close: () => rm(directory, { recursive: true, force: true }) };
 }
 function authClient(client, state) {
@@ -53,8 +53,8 @@ function sessions(client, state) {
   });
   client.on("tcpip", (accept) => { const channel = accept(); channel.on("data", (data) => channel.write(data)); });
 }
-async function listening(server) {
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+async function listening(server, host = "127.0.0.1") {
+  await new Promise((resolve) => server.listen(0, host, resolve));
   return server.address().port;
 }
 async function readBody(req) { const chunks = []; for await (const chunk of req) chunks.push(chunk); return Buffer.concat(chunks).toString(); }
@@ -124,6 +124,7 @@ async function apiRequest(f, req, res, url, raw) {
   if (!f.state.tokens.has(bearer)) return send(res, 401, { error: "invalid_token", error_description: "wrong-audience" });
   if (url.pathname === "/mcp") {
     const message = JSON.parse(raw);
+    if (message.method === "initialize") f.state.clientVersions.push(message.params.clientInfo.version);
     const result = message.method === "initialize" ? { protocolVersion: "2025-03-26", serverInfo: { name: "Tartlet", version: "0.2.0" }, capabilities: { tools: {} } } : { content: [], structuredContent: { vms: f.state.vms } };
     return send(res, 200, { jsonrpc: "2.0", id: message.id, result });
   }
@@ -135,12 +136,12 @@ async function apiRequest(f, req, res, url, raw) {
   return send(res, 404, { error: "not_found" });
 }
 export async function fake(t, options = {}) {
-  const certs = await certificates(), directory = await mkdtemp(path.join(tmpdir(), "tartlet cli's test-"));
+  const certs = await certificates(), temporary = await mkdtemp(path.join(tmpdir(), "tartlet cli's & %test%-")), directory = path.join(temporary, "profile");
   const hostKey = generatePair(), otherKey = generatePair(), signing = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]);
-  const state = { tokens: new Set(), refresh: new Set(), refreshes: 0, codes: new Map(), authorized: new Set(), authorizations: 0, authentications: 0, ptys: 0, shells: 0, registrations: [], deviceErrors: [], devices: 0, servers: [], vms: [{ name: "vm-example", label: "example" }], requests: [], commands: [], files: new Map(), metadata: {} };
+  const state = { tokens: new Set(), refresh: new Set(), refreshes: 0, codes: new Map(), authorized: new Set(), authorizations: 0, authentications: 0, ptys: 0, shells: 0, registrations: [], deviceErrors: [], devices: 0, servers: [], vms: [{ name: "vm-example", label: "example" }], requests: [], commands: [], clientVersions: [], files: new Map(), metadata: {} };
   const ssh = new Server({ hostKeys: [hostKey.private] }, (client) => authClient(client, state));
   const port = await listening(ssh), webSockets = new WebSocketServer({ noServer: true });
-  const f = { directory, certs, state, hostKey, otherKey, signing, cloud: Boolean(options.cloud) };
+  const f = { directory, certs, state, hostKey, otherKey, signing, webSockets, cloud: Boolean(options.cloud) };
   const https = createServer({ cert: certs.cert, key: certs.key }, (req, res) => {
     void (async () => { state.requests.push({ path: req.url, authorization: req.headers.authorization, cookie: req.headers.cookie }); await oauthRequest(f, req, res, new URL(req.url, f.endpoint.origin), await readBody(req)); })().catch((error) => { state.failure = error; send(res, 500, { error: "server_error" }); });
   });
@@ -161,13 +162,14 @@ export async function fake(t, options = {}) {
       stream.pipe(upstream).pipe(stream);
     });
   });
-  f.endpoint = { origin: `https://127.0.0.1:${await listening(https)}`, trust: localTrust(certs.cert) };
+  const host = options.host ?? "127.0.0.1", authority = host.includes(":") ? `[${host}]` : host;
+  f.endpoint = { origin: `https://${authority}:${await listening(https, host)}`, trust: localTrust(certs.cert) };
   t.after(async () => {
     for (const client of clients) client.destroy();
     for (const ws of webSockets.clients) ws.terminate();
     webSockets.close(); https.closeAllConnections();
     await Promise.all([new Promise((resolve) => https.close(resolve)), new Promise((resolve) => ssh.close(resolve))]);
-    await rm(directory, { recursive: true, force: true }); await certs.close(); assert.equal(state.failure, undefined);
+    await rm(temporary, { recursive: true, force: true }); await certs.close(); assert.equal(state.failure, undefined);
   });
   return f;
 }

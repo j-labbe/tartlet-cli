@@ -1,4 +1,4 @@
-import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -61,11 +61,16 @@ $acl.AddAccessRule($rule)
 export async function windowsPrivate(directory: string, execute: (file: string, args: string[], options: { windowsHide: boolean; env: NodeJS.ProcessEnv }) => Promise<unknown> = exec) {
   await execute("powershell.exe", windowsAclArguments(), { windowsHide: true, env: { ...process.env, TARTLET_ACL_DIRECTORY: directory } });
 }
-export async function privateDirectory(directory: string) {
-  await mkdir(directory, { recursive: true, mode: 0o700 });
+export async function privateDirectory(directory: string, platform = process.platform, protectWindows = windowsPrivate) {
+  const created = await mkdir(directory, { recursive: true, mode: 0o700 });
   const info = await lstat(directory);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("The configuration folder must be a real folder, not a link.");
-  if (process.platform === "win32") await windowsPrivate(directory);
+  if (platform === "win32") {
+    if (created !== undefined) {
+      try { await protectWindows(directory); }
+      catch (error) { await rmdir(directory); throw error; }
+    }
+  }
   else {
     if (process.getuid && info.uid !== process.getuid()) throw new Error("The configuration folder belongs to another account.");
     await chmod(directory, 0o700);
@@ -95,15 +100,55 @@ export async function readState(directory: string): Promise<State> {
 export async function withLock<T>(directory: string, name: string, run: () => Promise<T>): Promise<T> {
   await privateDirectory(directory);
   const lock = path.join(directory, `${name}.lock`), deadline = Date.now() + 30000;
-  for (;;) {
-    try { await mkdir(lock, { mode: 0o700 }); break; }
-    catch (error) {
-      if (!z.object({ code: z.literal("EEXIST") }).safeParse(error).success) throw error;
-      if (Date.now() > deadline) throw new Error("Another tartlet command is using the saved profiles. If none is running, delete the profiles.lock folder in the configuration folder.");
-      await setTimeout(100);
-    }
+  const owner = path.join(lock, `${randomUUID()}.owner`);
+  while (!await acquireLock(lock, owner)) {
+    if (Date.now() > deadline) throw new Error("Another tartlet command is using the saved profiles. Wait a minute and try again.");
+    await setTimeout(100);
   }
-  try { return await run(); } finally { await rm(lock, { recursive: true, force: true }); }
+  try { return await run(); } finally { await releaseLock(lock, owner); }
+}
+const FileErrorSchema = z.object({ code: z.string() });
+const OwnerSchema = z.object({ pid: z.number().int().positive() });
+const fileError = (error: unknown, codes: string[]) => { const result = FileErrorSchema.safeParse(error); return result.success && codes.includes(result.data.code); };
+async function removeEmptyLock(lock: string) {
+  try { await rmdir(lock); } catch (error) { if (!fileError(error, ["ENOENT", "ENOTEMPTY", "EEXIST"])) throw error; }
+}
+async function releaseLock(lock: string, owner: string) {
+  await rm(owner, { force: true }); await removeEmptyLock(lock);
+}
+async function liveOwner(file: string) {
+  try {
+    const parsed = OwnerSchema.safeParse(JSON.parse(await readFile(file, "utf8")));
+    if (!parsed.success) return false;
+    process.kill(parsed.data.pid, 0); return true;
+  } catch (error) { return !(error instanceof SyntaxError || fileError(error, ["ENOENT", "ESRCH"])); }
+}
+async function recoverLock(lock: string) {
+  const entries = await readdir(lock);
+  if (entries.length === 0) {
+    if (Date.now() - (await lstat(lock)).mtimeMs > 60000) await removeEmptyLock(lock);
+    return;
+  }
+  for (const entry of entries) {
+    if (!/^[0-9a-f-]{36}\.owner$/.test(entry)) continue;
+    const owner = path.join(lock, entry), info = await lstat(owner);
+    if (info.isFile() && Date.now() - info.mtimeMs > 60000 && !await liveOwner(owner)) await rm(owner, { force: true });
+  }
+  await removeEmptyLock(lock);
+}
+async function acquireLock(lock: string, owner: string): Promise<boolean> {
+  try { await mkdir(lock, { mode: 0o700 }); }
+  catch (error) {
+    if (!fileError(error, ["EEXIST"])) throw error;
+    try { await recoverLock(lock); } catch (error) { if (!fileError(error, ["ENOENT"])) throw error; }
+    return false;
+  }
+  try {
+    await writeFile(owner, JSON.stringify({ pid: process.pid }), { mode: 0o600, flag: "wx" });
+    const entries = await readdir(lock);
+    if (entries.length === 1 && entries[0] === path.basename(owner)) return true;
+  } catch (error) { if (!fileError(error, ["ENOENT"])) throw error; }
+  await releaseLock(lock, owner); return false;
 }
 export async function changeState<T>(directory: string, change: (state: State) => Promise<T>) {
   return withLock(directory, "profiles", async () => {

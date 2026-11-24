@@ -22,7 +22,7 @@ test("browser PKCE sign-in saves a private pinned profile and no cloud credentia
   assert.equal(profile.origin, f.endpoint.origin); assert.equal(profile.trust.root_sha256, f.endpoint.trust.root_sha256);
   assert.equal(f.state.registrations[0].token_endpoint_auth_method, "none"); assert.equal(io.output(), "");
   assert.ok(!io.errors().includes(profile.tokens.access_token));
-  assert.equal((await stat(f.directory)).mode & 0o777, 0o700); assert.equal((await stat(path.join(f.directory, "profiles.json"))).mode & 0o777, 0o600);
+  if (process.platform !== "win32") { assert.equal((await stat(f.directory)).mode & 0o777, 0o700); assert.equal((await stat(path.join(f.directory, "profiles.json"))).mode & 0o777, 0o600); }
 });
 test("device sign-in uses the server grant and prints only the verification code", async (t) => {
   const f = await fake(t), io = testIO(f);
@@ -30,12 +30,14 @@ test("device sign-in uses the server grant and prints only the verification code
   assert.equal(f.state.devices, 1); assert.match(io.errors(), /ABCD-EFGH/); assert.ok(!io.errors().includes(f.state.device));
   assert.equal(f.state.registrations[0].redirect_uris.length, 0);
 });
-test("cloud PKCE verifies its signed access token and then signs in to the chosen server", async (t) => {
+test("cloud PKCE uses its issuer token without a JWKS request, then signs in to the server", async (t) => {
   const f = await fake(t), cloud = await fake(t, { cloud: true }), serverIO = testIO(f), cloudIO = testIO(cloud);
   cloud.state.servers = [{ server_id: `srv_${"a".repeat(26)}`, org_id: `org_${"a".repeat(26)}`, name: "Server 1", addresses: [{ kind: "tailnet", host: "127.0.0.1", port: Number(new URL(f.endpoint.origin).port) }], online: true }];
+  cloud.state.metadata = { jwks_uri: undefined };
   const io = { ...serverIO.io, open: (url) => new URL(url).origin === cloud.endpoint.origin ? cloudIO.io.open(url) : serverIO.io.open(url) };
   await login({ directory: f.directory, ca: path.join(f.certs.directory, "cert.pem"), device: false, io, cloud: cloud.endpoint });
   assert.equal(cloud.state.registrations.length, 0); assert.equal(f.state.registrations.length, 1);
+  assert.ok(!cloud.state.requests.some((request) => request.path === "/jwks"));
   const profile = (await readState(f.directory)).profiles[0]; assert.equal(profile.server_id, cloud.state.servers[0].server_id);
   const cloudBearer = cloud.state.requests.find((request) => request.path === "/v1/servers").authorization;
   assert.ok(!f.state.requests.some((request) => request.authorization === cloudBearer));
@@ -102,11 +104,11 @@ test("link and unlink change only the local key selection", async (t) => {
   const { f, io } = await signedIn(t), before = f.state.requests.length;
   await run(["link", "--generate"], { directory: f.directory, io: io.io });
   const key = (await readState(f.directory)).key; assert.equal(key.kind, "file");
-  assert.equal((await stat(key.private_path)).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal((await stat(key.private_path)).mode & 0o777, 0o600);
   await run(["unlink"], { directory: f.directory, io: io.io });
   assert.equal((await readState(f.directory)).key, undefined); assert.equal(f.state.requests.length, before);
 });
-test("native SSH uses the generated private config and strict known_hosts pin", { skip: process.platform === "win32" }, async (t) => {
+test("native SSH uses the generated private config and strict known_hosts pin", async (t) => {
   const { f } = await signedIn(t), io = testIO(f);
   await run(["proxy", "vm-example", "--config"], { directory: f.directory, io: io.io });
   const config = io.output().trim(), text = await readFile(config, "utf8"), knownHosts = path.join(path.dirname(config), "known_hosts");
@@ -114,7 +116,7 @@ test("native SSH uses the generated private config and strict known_hosts pin", 
   const result = await child(["-F", config, "vm-example", "printf native"]);
   assert.equal(result.code, 0, result.stderr); assert.equal(result.stdout, "ran:printf native\n"); assert.equal(f.state.authorizations, 2);
 });
-test("native SSH refuses a different pinned host key", { skip: process.platform === "win32" }, async (t) => {
+test("native SSH refuses a different pinned host key", async (t) => {
   const { f } = await signedIn(t), io = testIO(f); f.state.wrongHost = true;
   await run(["proxy", "vm-example", "--config"], { directory: f.directory, io: io.io });
   const result = await child(["-F", io.output().trim(), "vm-example", "true"]);

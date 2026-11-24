@@ -5,6 +5,7 @@ import { responseError } from "./errors.js";
 import { connectedProfile } from "./profiles.js";
 import { selectedKey } from "./keys.js";
 import type { Profile } from "./storage.js";
+import { VERSION } from "./version.js";
 
 const RpcSchema = z.object({ jsonrpc: z.literal("2.0"), id: z.number(), result: z.unknown().optional(), error: z.object({ code: z.number(), message: z.string() }).optional() });
 async function rpc(profile: Profile, id: number, method: string, params: unknown): Promise<unknown> {
@@ -17,8 +18,10 @@ async function rpc(profile: Profile, id: number, method: string, params: unknown
 }
 const VmListSchema = z.object({ structuredContent: z.object({ vms: z.array(z.object({ name: VmNameSchema, label: TaskLabelSchema.optional() })) }) });
 export async function resolveVm(profile: Profile, value: string, labelOnly = false) {
-  const name = VmNameSchema.parse(value);
-  await rpc(profile, 1, "initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "tartlet-cli", version: "0.2.0" } });
+  const parsed = VmNameSchema.safeParse(value);
+  if (!parsed.success) throw new Error("Use a VM name or label.");
+  const name = parsed.data;
+  await rpc(profile, 1, "initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "tartlet-cli", version: VERSION } });
   const result = await rpc(profile, 2, "tools/call", { name: "list_my_vms", arguments: {} });
   const failure = z.object({ structuredContent: ErrorResponseSchema }).safeParse(result);
   if (failure.success) throw responseError(409, failure.data.structuredContent);

@@ -9,7 +9,7 @@ export async function openTunnel(access: Access) {
   const socket = new WebSocket(url, { ...tlsOptions(access.profile.trust), headers: { Authorization: `Bearer ${access.profile.tokens.access_token}` },
     followRedirects: false, perMessageDeflate: false, maxPayload: 256 * 1024, handshakeTimeout: 30000 });
   return new Promise<ReturnType<typeof createWebSocketStream>>((resolve, reject) => {
-    socket.once("error", (error) => reject(networkError(error)));
+    socket.once("error", (error) => reject(networkError(error, access.profile.origin)));
     socket.once("unexpected-response", (_req, res) => {
       const chunks: Buffer[] = []; let size = 0;
       res.on("data", (chunk: Buffer) => { size += chunk.length; if (size > 32768) res.destroy(); else chunks.push(chunk); });
