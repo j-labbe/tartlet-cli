@@ -2,8 +2,10 @@
 
 Public npm packages for Tartlet, a self-hosted Mac VM console.
 
-- [`@tartlet/cli`](packages/cli/README.md) provides the `tartlet` command for sign-in, SSH, file copy, and native SSH proxy connections.
-- [`@tartlet/protocol`](packages/protocol/README.md) provides shared schemas, types, and pure helpers.
+- [`@tartlet/cli`](packages/cli/README.md) is the `tartlet` command. Use it to sign in,
+  open SSH sessions, copy files and connect OpenSSH or VS Code to your VMs.
+- [`@tartlet/protocol`](packages/protocol/README.md) holds the schemas, types and small
+  helpers that Tartlet and the CLI share.
 
 ## Build and test
 
@@ -21,11 +23,12 @@ npm run pack:smoke
 
 ## Releases
 
-The release workflow stages both npm archives. Publishing uses npm trusted
-publishing with provenance and waits for approval in the `npm-release` environment.
-Configure that environment with the owner's required review, and configure each
-npm package's trusted publisher before enabling publication. The owner uses
-2FA for release approval. The workflow creates no tags.
+The release workflow builds and tests both npm packages. When you start it with
+`publish` on, it waits for approval in the `npm-release` environment and then
+publishes with npm trusted publishing and provenance. Before you turn on publishing,
+set that environment to require the owner's review, and set a trusted publisher for
+each npm package. The owner approves releases with 2FA. The workflow does not create
+tags.
 
 ## Security
 

@@ -17,7 +17,7 @@ export function responseError(status: number, body: unknown): HttpError {
   const protocol = ErrorResponseSchema.safeParse(body);
   if (protocol.success) return new HttpError(status, protocol.data.error.code, protocol.data.error.message);
   const oauth = OAuthErrorSchema.safeParse(body);
-  if (oauth.success) return new HttpError(status, oauth.data.error, oauth.data.error_description ?? "Sign in again if your access has ended.");
+  if (oauth.success) return new HttpError(status, oauth.data.error, oauth.data.error_description ?? "If your sign-in has ended, run tartlet login again.");
   return new HttpError(status, "request_failed", "The server could not complete the request.");
 }
 const CodeSchema = z.object({ code: z.string() });
@@ -25,9 +25,9 @@ export function networkError(error: unknown): Error {
   const parsed = CodeSchema.safeParse(error), code = parsed.success ? parsed.data.code : "";
   switch (code) {
     case "ENOTFOUND": case "EAI_AGAIN": case "EHOSTUNREACH": case "ENETUNREACH": case "ETIMEDOUT":
-      return Object.assign(new Error("Cannot resolve the name or reach the server's network. Turn on Tailscale if this server is on a tailnet, then check its address."), { code });
+      return Object.assign(new Error("Cannot reach the server's network. Turn on Tailscale if the server is on a tailnet, then check the server address."), { code });
     case "ECONNREFUSED": case "ECONNRESET":
-      return new Error("The server is down or refused the connection. Check that Tartlet is running at the saved address.");
+      return new Error("The server is down or refused the connection. Check that Tartlet is running at the address you signed in to.");
     default: return error instanceof Error ? error : new Error("The connection failed.");
   }
 }

@@ -64,7 +64,7 @@ export async function windowsPrivate(directory: string, execute: (file: string, 
 export async function privateDirectory(directory: string) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const info = await lstat(directory);
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("The configuration folder must be a private directory, not a link.");
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("The configuration folder must be a real folder, not a link.");
   if (process.platform === "win32") await windowsPrivate(directory);
   else {
     if (process.getuid && info.uid !== process.getuid()) throw new Error("The configuration folder belongs to another account.");
@@ -89,7 +89,7 @@ export async function readState(directory: string): Promise<State> {
     finally { await handle.close(); }
   } catch (error) {
     if (z.object({ code: z.literal("ENOENT") }).safeParse(error).success) return { version: 1, profiles: [] };
-    throw new Error("Cannot read the saved profiles. Check the private configuration folder.");
+    throw new Error("Cannot read the saved profiles in the configuration folder.");
   }
 }
 export async function withLock<T>(directory: string, name: string, run: () => Promise<T>): Promise<T> {
@@ -99,7 +99,7 @@ export async function withLock<T>(directory: string, name: string, run: () => Pr
     try { await mkdir(lock, { mode: 0o700 }); break; }
     catch (error) {
       if (!z.object({ code: z.literal("EEXIST") }).safeParse(error).success) throw error;
-      if (Date.now() > deadline) throw new Error("Another Tartlet command holds the profile lock. If no command is running, remove the .lock folder in the configuration folder.");
+      if (Date.now() > deadline) throw new Error("Another tartlet command is using the saved profiles. If none is running, delete the profiles.lock folder in the configuration folder.");
       await setTimeout(100);
     }
   }
@@ -114,7 +114,7 @@ export async function changeState<T>(directory: string, change: (state: State) =
 }
 export function selectProfile(state: State, name = state.active): Profile {
   const profile = state.profiles.find((entry) => entry.name === name);
-  if (!profile) throw new Error("No saved server profile. Run tartlet login first, or choose --profile <name>.");
+  if (!profile) throw new Error("No saved profile found. Run tartlet login first, or check the --profile name.");
   return profile;
 }
 export async function readUtf8(file: string) { return readFile(file, "utf8"); }

@@ -8,19 +8,19 @@ import { networkError, responseError } from "./errors.js";
 export type Endpoint = { origin: string; trust: Trust };
 export function localTrust(pem: string): Trust {
   const certificate = new X509Certificate(pem);
-  if (!certificate.ca || !certificate.verify(certificate.publicKey)) throw new Error("Use the self-signed HTTPS root CA certificate, not a leaf certificate.");
+  if (!certificate.ca || !certificate.verify(certificate.publicKey)) throw new Error("--ca needs the self-signed root certificate, not the server's own certificate.");
   const root_sha256 = createHash("sha256").update(certificate.publicKey.export({ type: "spki", format: "der" })).digest("hex");
   return { kind: "local_ca", root_sha256, root_pem: certificate.toString() };
 }
 export function tlsOptions(trust: Trust): ConnectionOptions {
   if (trust.kind === "webpki") return { rejectUnauthorized: true };
   const checked = localTrust(trust.root_pem);
-  if (checked.kind !== "local_ca" || checked.root_sha256 !== trust.root_sha256) throw new Error("The saved HTTPS root CA does not match its pin. Sign in again with the correct CA.");
+  if (checked.kind !== "local_ca" || checked.root_sha256 !== trust.root_sha256) throw new Error("The saved root certificate does not match its pin. Sign in again with the correct --ca file.");
   return { rejectUnauthorized: true, ca: checked.root_pem };
 }
 export function sameOriginUrl(origin: string, value: string): URL {
   const url = new URL(value);
-  if (url.origin !== origin || url.username || url.password || url.hash || url.protocol !== "https:") throw new Error("The server returned an OAuth endpoint outside its saved HTTPS origin.");
+  if (url.origin !== origin || url.username || url.password || url.hash || url.protocol !== "https:") throw new Error("The server sent a sign-in address outside its saved HTTPS origin.");
   return url;
 }
 export interface JsonRequest { endpoint: Endpoint; url: string; method?: string; body?: string; headers?: Record<string, string> }
@@ -32,18 +32,18 @@ export async function requestJson(input: JsonRequest): Promise<{ status: number;
       const chunks: Buffer[] = []; let length = 0;
       res.on("data", (chunk: Buffer) => {
         length += chunk.length;
-        if (length > 4 * 1024 * 1024) { res.destroy(new Error("The server response is too large.")); return; }
+        if (length > 4 * 1024 * 1024) { res.destroy(new Error("The server sent a reply that is too large.")); return; }
         chunks.push(chunk);
       });
       res.on("error", reject);
       res.on("end", () => {
         let body: unknown;
         try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
-        catch { reject(new Error(`HTTP ${res.statusCode ?? 0}: the server did not return JSON.`)); return; }
+        catch { reject(new Error(`HTTP ${res.statusCode ?? 0}: the server did not send JSON. Check that the address points to Tartlet.`)); return; }
         resolve({ status: res.statusCode ?? 0, body });
       });
     });
-    req.on("timeout", () => req.destroy(Object.assign(new Error("Connection timed out."), { code: "ETIMEDOUT" })));
+    req.on("timeout", () => req.destroy(Object.assign(new Error("The connection timed out."), { code: "ETIMEDOUT" })));
     req.on("error", (error) => reject(networkError(error)));
     req.end(input.body);
   });
@@ -52,7 +52,7 @@ export async function json<T>(input: JsonRequest, schema: z.ZodType<T>): Promise
   const response = await requestJson(input);
   if (response.status < 200 || response.status >= 300) throw responseError(response.status, response.body);
   const parsed = schema.safeParse(response.body);
-  if (!parsed.success) throw new Error("The server returned an invalid response. Check that the CLI version matches the server.");
+  if (!parsed.success) throw new Error("The CLI cannot read the server's reply. Check that the CLI version matches the server.");
   return parsed.data;
 }
 export function form(endpoint: Endpoint, url: string, fields: Record<string, string>): JsonRequest {

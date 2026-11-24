@@ -21,7 +21,7 @@ export async function withSsh<T>(access: Access, run: (client: SshClient) => Pro
   const lost = new Promise<never>((_resolve, reject) => { failed = reject; });
   void lost.catch(() => {});
   client.on("error", failed);
-  client.on("close", () => { if (!closing) failed(new Error("The SSH tunnel closed before the operation finished.")); });
+  client.on("close", () => { if (!closing) failed(new Error("The connection closed before the command finished.")); });
   tunnel.on("error", failed);
   try {
     await Promise.race([lost, new Promise<void>((resolve) => {

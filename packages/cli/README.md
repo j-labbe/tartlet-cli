@@ -1,43 +1,62 @@
 # Tartlet CLI
 
-Sign in and connect to your Tartlet VMs. Requires Node.js 22.14 or later.
+The `tartlet` command signs you in to a Tartlet server and connects you to your VMs.
+It needs Node.js 22.14 or later. Native Windows is untested.
+
+## Quick start
+
+Run the CLI with `npx`. You do not need to install it first:
 
 ```sh
-npx @tartlet/cli@0.2.0 login
-npx @tartlet/cli@0.2.0 ssh vm-example
-npx @tartlet/cli@0.2.0 ssh vm-example -- 'uname -a'
-npx @tartlet/cli@0.2.0 cp ./file vm-example:/tmp/file
-npx @tartlet/cli@0.2.0 cp vm-example:/tmp/file ./file
+npx @tartlet/cli login
 ```
 
-Use a VM name or task label. Add `--label` if the label also matches a VM name.
+The examples below use `tartlet`. If you did not install the CLI globally, use
+`npx @tartlet/cli` in its place.
 
-To sign in without cloud discovery, run `tartlet login --server https://example.com`.
-Add `--device` to sign in with a code. For a local HTTPS CA, add `--ca ./root.pem`
-with the root certificate from your administrator. The CLI saves its SHA-256
-SPKI pin. Saved server addresses and trust settings stay fixed across cloud
-metadata changes. Use `--profile <name>` to choose or name a profile.
-
-## Choose an SSH key
-
-The CLI creates a key in its private configuration folder on your first connection.
-To choose another key, run one of these commands:
+### Sign in
 
 ```sh
-tartlet link ./key.pub
-tartlet link --agent SHA256:fingerprint
-tartlet unlink
-tartlet link --generate
+tartlet login
 ```
 
-For a file whose private key has a different name, add `--identity ./private-key`.
-Load encrypted keys into your SSH agent. Run `tartlet link` without flags to pick a
-key in the terminal. `link` and `unlink` change local settings. Each connection
-authorizes the selected public key briefly on the VM.
+`login` opens your browser. After you sign in, you choose a server from your account.
+To sign in to a server directly, give its address:
 
-## Use native SSH or VS Code
+```sh
+tartlet login --server https://example.com
+```
 
-Generate a private SSH config and use the path it prints:
+Other options:
+
+- `--device` shows a code that you enter in a browser on any device.
+- `--ca ./root.pem` trusts a private HTTPS root certificate from your administrator.
+  The CLI saves a pin of that certificate with the profile.
+- `--profile <name>` names the profile, or selects a saved one.
+
+### Open a shell or run a command
+
+```sh
+tartlet ssh vm-example
+tartlet ssh vm-example -- 'uname -a'
+```
+
+Give a VM name or a task label. If a label is the same as a VM name, add `--label`
+to match labels only.
+
+### Copy a file
+
+```sh
+tartlet cp ./file vm-example:/tmp/file
+tartlet cp vm-example:/tmp/file ./file
+```
+
+`cp` copies one file in each run.
+
+### Use OpenSSH or VS Code
+
+`tartlet proxy vm-example` sends an SSH connection through standard input and output,
+so OpenSSH can use it as a `ProxyCommand`. Let the CLI write the config for you:
 
 ```sh
 tartlet proxy vm-example --config
@@ -45,19 +64,63 @@ ssh -F /path/to/ssh_config vm-example
 ssh -F /path/to/ssh_config -N -L 8080:127.0.0.1:8080 vm-example
 ```
 
-Choose that config as the SSH configuration file in VS Code. It sets the VM user,
-identity, pinned host key, and `ProxyCommand`. Keep strict host-key checking enabled.
-Regenerate it after a VM is recreated or you change the selected key. `proxy`
-without `--config` carries the SSH stream over standard input and output.
+The first command prints the path of the config file. The file sets the VM user, your
+key, the VM's host key and the `ProxyCommand`. On macOS or Linux, it includes lines
+like these:
+
+```
+Host vm-example
+  User <vm-user>
+  StrictHostKeyChecking yes
+  IdentityFile "/path/to/key"
+  ProxyCommand env TARTLET_CONFIG_DIR='/path/to/config' '/path/to/node' '/path/to/main.js' 'proxy' 'vm-example' '--profile' 'example.com'
+```
+
+In VS Code, choose this file as the SSH configuration file. Do not turn off strict
+host key checking. Run `--config` again after the VM is recreated or after you choose
+a different key.
+
+### Choose an SSH key
+
+On the first connection, the CLI creates a key in its configuration folder. To use
+a different key, run one of these:
+
+```sh
+tartlet link ./key.pub
+tartlet link ./key.pub --identity ./private-key
+tartlet link --agent SHA256:fingerprint
+tartlet link --generate
+tartlet link
+```
+
+`tartlet link` with no options asks you to choose. Add keys that have a passphrase to
+your SSH agent. `tartlet unlink` forgets the chosen key. Each connection adds the
+chosen key to the VM for a short time. `link` and `unlink` change only local settings.
+
+## Troubleshooting
+
+- `Cannot reach the server's network`: if the server is on a tailnet, turn on
+  Tailscale. Then check the server address.
+- `The server is down or refused the connection`: check that Tartlet is running at
+  the address you signed in to.
+- Server errors show as `HTTP <status>: <code>`. For sign-in, the codes are:
+  - `invalid_token`: your sign-in ended or your access changed. Run `tartlet login`.
+  - `invalid_grant`: the CLI cannot renew the saved sign-in. Run `tartlet login`.
+  - `access_denied`: sign-in was not approved. Try again, or ask your administrator
+    for access.
+  - `expired_token`: the device sign-in code expired. Run `tartlet login --device` again.
 
 ## Saved files
 
-Profiles, tokens, keys, SSH configs, and `known_hosts` live under your account's
-private configuration folder. The default is the application support folder on
-macOS, the XDG config folder on Linux, or Local AppData on Windows.
-`TARTLET_CONFIG_DIR` overrides it. Files use UTF-8 without a BOM. Windows folders
-get an ACL for the current account. The CLI does not write to your `.ssh` folder.
+The CLI keeps profiles, tokens, keys, SSH config files and `known_hosts` in a private
+configuration folder:
 
-SSH and file traffic goes directly to your server through an HTTPS WebSocket.
-The cloud provides sign-in and a server list. If your server is on a tailnet,
-turn on Tailscale before connecting.
+- macOS: `~/Library/Application Support/tartlet`
+- Linux: `$XDG_CONFIG_HOME/tartlet`, or `~/.config/tartlet`
+- Windows: `%LOCALAPPDATA%\tartlet`, with access limited to your account
+
+Set `TARTLET_CONFIG_DIR` to use a different folder. The CLI does not write to your
+`.ssh` folder.
+
+SSH and file traffic goes straight to your server over an HTTPS WebSocket. The Tartlet
+cloud only signs you in and lists your servers.

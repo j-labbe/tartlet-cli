@@ -7,13 +7,13 @@ import type { Access } from "./access.js";
 import type { TerminalIO } from "./ssh.js";
 
 export function sshConfigValue(value: string): string {
-  if (/[\r\n\0]/.test(value)) throw new Error("SSH configuration paths must fit on one line.");
+  if (/[\r\n\0]/.test(value)) throw new Error("SSH config file paths cannot contain line breaks.");
   return `"${value.replaceAll("\\", "/").replaceAll('"', '\\"').replaceAll("%", "%%")}"`;
 }
 export function commandArgument(value: string, platform = process.platform): string {
-  if (/[\r\n\0]/.test(value)) throw new Error("The proxy command path must fit on one line.");
+  if (/[\r\n\0]/.test(value)) throw new Error("Paths in the proxy command cannot contain line breaks.");
   if (platform === "win32") {
-    if (/["&|<>^%]/.test(value)) throw new Error("Move the CLI and configuration folder to Windows paths without shell metacharacters to use native SSH.");
+    if (/["&|<>^%]/.test(value)) throw new Error("To use native SSH, move the CLI and its configuration folder to paths without shell metacharacters such as & or %.");
     return `"${value.replaceAll("\\", "/")}"`;
   }
   return `'${value.replaceAll("'", "'\\''")}'`;

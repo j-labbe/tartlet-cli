@@ -19,7 +19,7 @@ async function fromCloud(options: LoginOptions) {
   const server = servers[await options.io.choose("Choose a server", servers.map((entry) => `${entry.name} (${entry.online ? "online" : "offline"})`))];
   if (!server) throw new Error("Choose one of the listed servers.");
   const state = await readState(options.directory), named = state.profiles.find((entry) => entry.name === options.profile);
-  if (named?.server_id && named.server_id !== server.server_id) throw new Error("The selected profile belongs to a different server. Choose its server from the list, or use another --profile name.");
+  if (named?.server_id && named.server_id !== server.server_id) throw new Error("That profile belongs to a different server. Choose its server from the list, or use another --profile name.");
   const saved = named ?? state.profiles.find((entry) => entry.server_id === server.server_id);
   if (saved) return { origin: saved.origin, server_id: server.server_id, saved };
   const address = server.addresses[await options.io.choose("Choose a server address", server.addresses.map((entry) => `${originOf(entry)} (${entry.kind})`))];
@@ -31,13 +31,13 @@ async function target(options: LoginOptions) {
   if (!options.server) return fromCloud(options);
   const origin = normalizeOrigin(options.server), state = await readState(options.directory);
   const saved = state.profiles.find((entry) => options.profile ? entry.name === options.profile : entry.origin === origin);
-  if (saved && saved.origin !== origin) throw new Error("This profile already has a different saved origin. Use a new --profile name.");
+  if (saved && saved.origin !== origin) throw new Error("This profile is saved for a different server address. Use a new --profile name.");
   return { origin, server_id: saved?.server_id, saved };
 }
 async function loginTrust(options: LoginOptions, saved: Profile | undefined): Promise<Trust> {
   if (!options.ca) return saved?.trust ?? { kind: "webpki" };
   const trust = localTrust(await readUtf8(options.ca));
-  if (saved && JSON.stringify(saved.trust) !== JSON.stringify(trust)) throw new Error("This profile already has different HTTPS trust. Use a new --profile name after verifying the root CA.");
+  if (saved && JSON.stringify(saved.trust) !== JSON.stringify(trust)) throw new Error("This profile is saved with a different root certificate. Check the certificate with your administrator, then use a new --profile name.");
   return trust;
 }
 export async function login(options: LoginOptions): Promise<Profile> {
@@ -48,10 +48,10 @@ export async function login(options: LoginOptions): Promise<Profile> {
   const profile: Profile = { name, ...endpoint, ...result, expires_at: Date.now() + result.tokens.expires_in * 1000, ...(selected.server_id ? { server_id: selected.server_id } : {}) };
   await changeState(options.directory, async (state) => {
     const previous = state.profiles.find((entry) => entry.name === name);
-    if (previous && (previous.origin !== profile.origin || JSON.stringify(previous.trust) !== JSON.stringify(profile.trust))) throw new Error("The saved profile changed while signing in. Try again with a new --profile name.");
+    if (previous && (previous.origin !== profile.origin || JSON.stringify(previous.trust) !== JSON.stringify(profile.trust))) throw new Error("Another command changed this profile while you signed in. Try again with a new --profile name.");
     state.profiles = state.profiles.filter((entry) => entry.name !== name); state.profiles.push(profile); state.active = name;
   });
-  options.io.say(`Signed in to ${profile.origin}. Profile: ${profile.name}.`);
+  options.io.say(`Signed in to ${profile.origin} as profile ${profile.name}.`);
   return profile;
 }
 export async function connectedProfile(directory: string, name?: string): Promise<Profile> {

@@ -19,7 +19,7 @@ export async function openTunnel(access: Access) {
         try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { body = {}; }
         reject(responseError(res.statusCode ?? 0, body)); socket.terminate();
       });
-      res.once("close", () => { reject(new Error("The server rejected the tunnel.")); socket.terminate(); });
+      res.once("close", () => { reject(new Error("The server refused the connection to the VM.")); socket.terminate(); });
     });
     socket.once("open", () => {
       const stream = createWebSocketStream(socket, { highWaterMark: 65536 });

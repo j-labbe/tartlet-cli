@@ -15,7 +15,7 @@ export function copyPlan(from: string, to: string) {
   const source = copyLocation(from), destination = copyLocation(to);
   if (source.kind === "remote" && destination.kind === "local") return { direction: "download", vm: source.vm, remote: source.path, local: destination.path };
   if (source.kind === "local" && destination.kind === "remote") return { direction: "upload", vm: destination.vm, remote: destination.path, local: source.path };
-  throw new Error("Use one local file and one VM:path, for example: tartlet cp ./file vm-example:/tmp/file.");
+  throw new Error("Give one local file and one <vm>:<path>, for example tartlet cp ./file vm-example:/tmp/file.");
 }
 async function remoteDestination(sftp: SFTPWrapper, file: string, local: string) {
   return new Promise<string>((resolve, reject) => sftp.stat(file, (error, stats) => {
