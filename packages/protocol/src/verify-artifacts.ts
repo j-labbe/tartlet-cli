@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { CLOCK_SKEW_SECONDS, EnrollmentApprovalPayloadSchema, EnrollmentPollPayloadSchema, HelloPayloadSchema, IdentityTokenClaimsSchema, ServerProofPayloadSchema } from "./artifacts.js";
-import type { EnrollmentApprovalPayload, EnrollmentPollPayload, HelloPayload, IdentityTokenClaims, ServerProofPayload } from "./artifacts.js";
+import { CLOCK_SKEW_SECONDS, CloudAccessTokenClaimsSchema, EnrollmentApprovalPayloadSchema, EnrollmentPollPayloadSchema, HelloPayloadSchema, IdentityTokenClaimsSchema, ServerProofPayloadSchema, UnenrollPayloadSchema } from "./artifacts.js";
+import type { CloudAccessTokenClaims, EnrollmentApprovalPayload, EnrollmentPollPayload, HelloPayload, IdentityTokenClaims, ServerProofPayload, UnenrollPayload } from "./artifacts.js";
 import { matchesExpected } from "./expected-fields.js";
 import { readUnverifiedJwsHeader } from "./jws.js";
 import { decodeBase64Url } from "./encoding.js";
@@ -55,6 +55,9 @@ const expectedApproval = z.discriminatedUnion("mode", [
 ]);
 const expectedProof = z.strictObject({ server_id: ServerProofPayloadSchema.shape.server_id, origin: ServerProofPayloadSchema.shape.origin, nonce: ServerProofPayloadSchema.shape.nonce });
 const expectedIdentity = z.strictObject({ iss: IdentityTokenClaimsSchema.shape.iss, aud: IdentityTokenClaimsSchema.shape.aud, nonce: IdentityTokenClaimsSchema.shape.nonce, org: IdentityTokenClaimsSchema.shape.org });
+const expectedUnenroll = z.strictObject({ server_id: UnenrollPayloadSchema.shape.server_id, nonce: UnenrollPayloadSchema.shape.nonce });
+const expectedCloudAccess = z.strictObject({ iss: CloudAccessTokenClaimsSchema.shape.iss, aud: CloudAccessTokenClaimsSchema.shape.aud })
+  .refine((value) => value.aud === value.iss, "Expected cloud access audience must match its issuer.");
 
 interface Verification<E> { jws: string; public_key: CryptoKey; expected: E; now?: number }
 export type ExpectedHello = Pick<HelloPayload, "server_id" | "nonce">;
@@ -62,6 +65,8 @@ export type ExpectedEnrollmentPoll = Pick<EnrollmentPollPayload, "device_code">;
 export type ExpectedEnrollmentApproval = z.infer<typeof expectedApproval>;
 export type ExpectedServerProof = Pick<ServerProofPayload, "server_id" | "origin" | "nonce">;
 export type ExpectedIdentityToken = Pick<IdentityTokenClaims, "iss" | "aud" | "nonce" | "org">;
+export type ExpectedUnenroll = Pick<UnenrollPayload, "server_id" | "nonce">;
+export type ExpectedCloudAccessToken = Pick<CloudAccessTokenClaims, "iss" | "aud">;
 export function verifyHello(options: Verification<ExpectedHello>): Promise<HelloPayload> {
   return verifyJws({ ...options, schema: HelloPayloadSchema, expected: expectedHello.parse(options.expected) });
 }
@@ -83,4 +88,10 @@ export function verifyServerProof(options: Verification<ExpectedServerProof>): P
 }
 export function verifyIdentityToken(options: Verification<ExpectedIdentityToken>): Promise<IdentityTokenClaims> {
   return verifyJws({ ...options, schema: IdentityTokenClaimsSchema, expected: expectedIdentity.parse(options.expected) });
+}
+export function verifyUnenroll(options: Verification<ExpectedUnenroll>): Promise<UnenrollPayload> {
+  return verifyJws({ ...options, schema: UnenrollPayloadSchema, expected: expectedUnenroll.parse(options.expected) });
+}
+export function verifyCloudAccessToken(options: Verification<ExpectedCloudAccessToken>): Promise<CloudAccessTokenClaims> {
+  return verifyJws({ ...options, schema: CloudAccessTokenClaimsSchema, expected: expectedCloudAccess.parse(options.expected) });
 }

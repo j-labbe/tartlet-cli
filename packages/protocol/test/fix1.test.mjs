@@ -95,10 +95,11 @@ test("fix1.4 artifact verifiers reject empty expected context at every level", a
   await assert.rejects(async () => verifyApproval(await sign(f.approval), { ...approvalExpected, approver_iss: {} }));
 });
 test("fix1.5 initial enrollment verifies unknown server, org and approver subject", async () => {
-  const payload = { ...f.approval, approver: { ...f.person, sub: "new-person" } };
+  const sub = `acct_${"f".repeat(26)}`;
+  const payload = { ...f.approval, approver: { ...f.person, sub } };
   const verified = await verifyApproval(await sign(payload));
   assert.deepEqual(verified, payload);
-  assert.equal(verified.approver.sub, "new-person");
+  assert.equal(verified.approver.sub, sub);
 });
 test("fix1.5 reenrollment pins server and org but accepts a new verified approver subject", async () => {
   const expected = { ...approvalExpected, mode: "reenroll", server_id: f.serverId, org_id: f.orgId };
@@ -136,7 +137,6 @@ test("fix1.8 bounds email at 254 characters", () => {
 
 const limitCases = [
   ["person sub", (value) => p.PersonIdentitySchema.safeParse({ ...f.person, sub: value }), 255],
-  ["identity sub", (value) => p.IdentityTokenClaimsSchema.safeParse({ ...f.claims, sub: value }), 255],
   ["device response code", (value) => p.EnrollmentStartResponseSchema.safeParse({ device_code: value, user_code: "ABCD-2345", verification_uri: "https://cloud.example.com/verify", expires_in: 600, interval: 5 }), 128],
   ["device poll code", (value) => p.EnrollmentPollRequestSchema.safeParse({ device_code: value, proof: f.compact }), 128],
   ["device signed code", (value) => p.EnrollmentPollPayloadSchema.safeParse({ ...f.poll, device_code: value }), 128],
@@ -162,7 +162,7 @@ test("fix1.nit command cap counts UTF-8 bytes", () => {
   assert.equal(p.RunCommandRequestSchema.safeParse({ ...request, command: `${request.command}a` }).success, false);
 });
 test("fix1.nit bounds catch-up batches at 100", () => {
-  const base = { type: "catch_up", next_cursor: "cursor-1", complete: true };
+  const base = { type: "catch_up", next_cursor: "cursor-1", complete: true, upstream_synced_at: 990 };
   assert.equal(p.CatchUpMessageSchema.safeParse({ ...base, cutoffs: Array(100).fill(f.cutoff) }).success, true);
   assert.equal(p.CatchUpMessageSchema.safeParse({ ...base, cutoffs: Array(101).fill(f.cutoff) }).success, false);
 });
