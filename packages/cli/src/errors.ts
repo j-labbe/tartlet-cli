@@ -30,7 +30,7 @@ function unreachableMessage(origin: string | undefined) {
 }
 export function networkError(error: unknown, origin?: string): Error {
   const parsed = CodeSchema.safeParse(error), code = parsed.success ? parsed.data.code : "";
-  if (certificateErrors.has(code)) return new Error("The server's HTTPS certificate is not trusted. If your administrator uses a local CA, run `tartlet login --server <url> --ca <root.pem>`.");
+  if (certificateErrors.has(code)) return new Error("The server's HTTPS certificate is not trusted. If your administrator gave you a root certificate, run `tartlet login --server <url> --ca <root.pem>`.");
   if (unreachableErrors.has(code)) return Object.assign(new Error(unreachableMessage(origin)), { code });
   if (refusedErrors.has(code)) return new Error("The server is down or refused the connection. Check that Tartlet is running at the address you signed in to.");
   return error instanceof Error ? error : new Error("The connection failed.");

@@ -29,11 +29,11 @@ Commands:
   unlink                 Forget the chosen SSH key
 
 Options:
-  --profile <name>  Use a saved server profile
-  --config-dir <path>  Use a different configuration folder
-  --label           Match <vm> against task labels only
-  --help            Show this help
-  --version         Show the version
+  --profile <name>       Use a saved server profile
+  --config-dir <path>    Use a different configuration folder
+  --label                Match <vm> against task labels only
+  --help                 Show this help
+  --version              Show the version
 
 <vm> is a VM name or a task label.
 login opens your browser. With --device, it shows a code to enter instead.

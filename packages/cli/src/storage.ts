@@ -102,7 +102,7 @@ export async function withLock<T>(directory: string, name: string, run: () => Pr
   const lock = path.join(directory, `${name}.lock`), deadline = Date.now() + 30000;
   const owner = path.join(lock, `${randomUUID()}.owner`);
   while (!await acquireLock(lock, owner)) {
-    if (Date.now() > deadline) throw new Error("Another tartlet command is using the saved profiles. Wait a minute and try again.");
+    if (Date.now() > deadline) throw new Error("Another tartlet command is using the saved profiles. Try again in a minute.");
     await setTimeout(100);
   }
   try { return await run(); } finally { await releaseLock(lock, owner); }

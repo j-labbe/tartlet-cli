@@ -26,9 +26,9 @@ npm run pack:smoke
 The release workflow builds and tests both npm packages. When you start it with
 `publish` on, it waits for approval in the `npm-release` environment and then
 publishes with npm trusted publishing and provenance. Before you turn on publishing,
-set that environment to require the owner's review and allow only `main`. Set a trusted
-publisher for each npm package. The owner approves releases with 2FA. The workflow does not create
-tags.
+set that environment to require the owner's review and to deploy only from the `main`
+branch. Set a trusted publisher for each npm package. The owner approves releases with
+2FA. The workflow does not create tags.
 
 ## Security
 

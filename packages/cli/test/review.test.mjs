@@ -79,7 +79,7 @@ test("a bad profile name fails before OAuth starts", async (t) => {
   assert.equal(f.state.requests.length, 0, "An invalid profile name must not start sign-in.");
 });
 test("certificate failures explain the server and CA login flags", () => {
-  const expected = "The server's HTTPS certificate is not trusted. If your administrator uses a local CA, run `tartlet login --server <url> --ca <root.pem>`.";
+  const expected = "The server's HTTPS certificate is not trusted. If your administrator gave you a root certificate, run `tartlet login --server <url> --ca <root.pem>`.";
   for (const code of ["SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "DEPTH_ZERO_SELF_SIGNED_CERT", "ERR_TLS_CERT_ALTNAME_INVALID", "CERT_HAS_EXPIRED"]) assert.equal(networkError({ code }).message, expected);
 });
 test("cloud connectivity errors do not suggest Tailscale", () => {
@@ -88,7 +88,7 @@ test("cloud connectivity errors do not suggest Tailscale", () => {
 });
 test("bad VM input has a plain message before any request", async (t) => {
   const { f } = await signedIn(t), profile = (await readState(f.directory)).profiles[0], before = f.state.requests.length;
-  await assert.rejects(resolveVm(profile, "bad/name"), { message: "Use a VM name or label." });
+  await assert.rejects(resolveVm(profile, "bad/name"), { message: "A VM name or task label has up to 63 lowercase letters, numbers or dashes, and starts with a letter or number." });
   assert.equal(f.state.requests.length, before);
 });
 test("a stale profile lock is recovered automatically", async (t) => {

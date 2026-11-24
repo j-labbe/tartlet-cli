@@ -19,7 +19,7 @@ async function rpc(profile: Profile, id: number, method: string, params: unknown
 const VmListSchema = z.object({ structuredContent: z.object({ vms: z.array(z.object({ name: VmNameSchema, label: TaskLabelSchema.optional() })) }) });
 export async function resolveVm(profile: Profile, value: string, labelOnly = false) {
   const parsed = VmNameSchema.safeParse(value);
-  if (!parsed.success) throw new Error("Use a VM name or label.");
+  if (!parsed.success) throw new Error("A VM name or task label has up to 63 lowercase letters, numbers or dashes, and starts with a letter or number.");
   const name = parsed.data;
   await rpc(profile, 1, "initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "tartlet-cli", version: VERSION } });
   const result = await rpc(profile, 2, "tools/call", { name: "list_my_vms", arguments: {} });

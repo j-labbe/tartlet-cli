@@ -14,8 +14,8 @@ npx @tartlet/cli login
 The examples below use `tartlet`. If you did not install the CLI globally, use
 `npx @tartlet/cli` in its place.
 
-During installation, npm or npx may try to compile `ssh2`'s optional native helper.
-The CLI also runs without that helper.
+During installation, npm or npx may try to build an optional native module for `ssh2`.
+If that build fails, the installation continues and the CLI still works.
 
 ### Sign in
 
@@ -59,8 +59,9 @@ tartlet cp vm-example:/tmp/file ./file
 ### Use OpenSSH or VS Code
 
 `tartlet proxy vm-example` sends an SSH connection through standard input and output,
-so OpenSSH can use it as a `ProxyCommand`. Install the CLI globally for native SSH
-and VS Code, because the npx cache can move. Then let the CLI write the config for you:
+so OpenSSH can use it as a `ProxyCommand`. For OpenSSH and VS Code, install the CLI
+globally. The config file stores the path to the CLI, and npx can move or delete its
+cached copy. Then let the CLI write the config for you:
 
 ```sh
 npm install --global @tartlet/cli
@@ -124,8 +125,8 @@ configuration folder:
 - Linux: `$XDG_CONFIG_HOME/tartlet`, or `~/.config/tartlet`
 - Windows: `%LOCALAPPDATA%\tartlet`, with access limited to your account
 
-Set `TARTLET_CONFIG_DIR` or pass `--config-dir <path>` to use a different folder. The CLI does not write to your
-`.ssh` folder.
+To use a different folder, set `TARTLET_CONFIG_DIR` or pass `--config-dir <path>`.
+The CLI does not write to your `.ssh` folder.
 
 SSH and file traffic goes straight to your server over an HTTPS WebSocket. The Tartlet
 cloud only signs you in and lists your servers.
