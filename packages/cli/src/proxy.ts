@@ -43,13 +43,15 @@ export async function proxy(access: Access, io: TerminalIO) {
     const finish = (error?: Error) => {
       if (finished) return; finished = true;
       io.stdin.unpipe(tunnel); io.stdin.pause(); tunnel.unpipe(io.stdout);
-      tunnel.off("end", ended); tunnel.off("close", ended); io.stdin.off("end", ended);
+      tunnel.off("end", ended); tunnel.off("close", ended); io.stdin.off("end", inputEnded);
       tunnel.destroy(); io.stdout.end();
       if (error) reject(error); else resolve();
     };
     const ended = () => finish();
-    tunnel.once("error", finish); tunnel.once("end", ended); tunnel.once("close", ended); io.stdin.once("end", ended);
-    io.stdin.pipe(tunnel); tunnel.pipe(io.stdout, { end: false });
-    if (io.stdin.readableEnded || tunnel.readableEnded) finish();
+    const inputEnded = () => { tunnel.end(); };
+    tunnel.once("error", finish); tunnel.once("end", ended); tunnel.once("close", ended); io.stdin.once("end", inputEnded);
+    io.stdin.pipe(tunnel, { end: false }); tunnel.pipe(io.stdout, { end: false });
+    if (io.stdin.readableEnded) inputEnded();
+    if (tunnel.readableEnded) finish();
   });
 }

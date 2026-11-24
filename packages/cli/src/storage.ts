@@ -61,15 +61,22 @@ $acl.AddAccessRule($rule)
 export async function windowsPrivate(directory: string, execute: (file: string, args: string[], options: { windowsHide: boolean; env: NodeJS.ProcessEnv }) => Promise<unknown> = exec) {
   await execute("powershell.exe", windowsAclArguments(), { windowsHide: true, env: { ...process.env, TARTLET_ACL_DIRECTORY: directory } });
 }
+async function windowsProtectedDirectory(directory: string, protect: typeof windowsPrivate) {
+  const marker = path.join(directory, ".windows-acl");
+  try {
+    if (!(await lstat(marker)).isFile()) throw new Error("The Windows permission marker must be a regular file.");
+    return;
+  } catch (error) { if (!fileError(error, ["ENOENT"])) throw error; }
+  await protect(directory);
+  try { await writeFile(marker, "", { mode: 0o600, flag: "wx" }); }
+  catch (error) { if (!fileError(error, ["EEXIST"])) throw error; }
+}
 export async function privateDirectory(directory: string, platform = process.platform, protectWindows = windowsPrivate) {
-  const created = await mkdir(directory, { recursive: true, mode: 0o700 });
+  await mkdir(directory, { recursive: true, mode: 0o700 });
   const info = await lstat(directory);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("The configuration folder must be a real folder, not a link.");
   if (platform === "win32") {
-    if (created !== undefined) {
-      try { await protectWindows(directory); }
-      catch (error) { await rmdir(directory); throw error; }
-    }
+    await windowsProtectedDirectory(directory, protectWindows);
   }
   else {
     if (process.getuid && info.uid !== process.getuid()) throw new Error("The configuration folder belongs to another account.");
@@ -102,7 +109,7 @@ export async function withLock<T>(directory: string, name: string, run: () => Pr
   const lock = path.join(directory, `${name}.lock`), deadline = Date.now() + 30000;
   const owner = path.join(lock, `${randomUUID()}.owner`);
   while (!await acquireLock(lock, owner)) {
-    if (Date.now() > deadline) throw new Error("Another tartlet command is using the saved profiles. Try again in a minute.");
+    if (Date.now() > deadline) throw new Error(`Another tartlet command is using the saved profiles. Try again in a minute. If no other tartlet command is running, delete "${lock}" and try again.`);
     await setTimeout(100);
   }
   try { return await run(); } finally { await releaseLock(lock, owner); }

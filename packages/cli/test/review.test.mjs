@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { PassThrough } from "node:stream";
+import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 import { ProfileSchema, privateDirectory, privateWrite, readState, withLock } from "../dist/storage.js";
@@ -22,8 +23,8 @@ async function temporary(t, prefix = "tartlet-review-") {
   const directory = await mkdtemp(path.join(tmpdir(), prefix));
   t.after(() => rm(directory, { recursive: true, force: true })); return directory;
 }
-async function signedIn(t) {
-  const f = await fake(t), io = testIO(f);
+async function signedIn(t, options) {
+  const f = await fake(t, options), io = testIO(f);
   await login({ directory: f.directory, server: f.endpoint.origin, ca: path.join(f.certs.directory, "cert.pem"), device: false, io: io.io });
   return { f, io };
 }
@@ -32,8 +33,8 @@ async function bounded(promise, message, timeout = 5000) {
   try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), timeout); })]); }
   finally { clearTimeout(timer); }
 }
-async function openProxy(t) {
-  const { f, io } = await signedIn(t), access = await authorize(f.directory, "vm-example", { label: false });
+async function openProxy(t, options) {
+  const { f, io } = await signedIn(t, options), access = await authorize(f.directory, "vm-example", { label: false });
   const stdin = new PassThrough(), stdout = new PassThrough(); stdout.resume();
   const opened = once(f.webSockets, "headers");
   const running = proxy(access, { ...io.io, stdin, stdout });
@@ -48,9 +49,15 @@ test("a clean tunnel disconnect ends the proxy while stdin remains open", async 
   await bounded(running, "A clean server disconnect must finish the proxy.");
   assert.equal(stdin.writableEnded, false); assert.equal(stdout.writableEnded, true);
 });
-test("stdin EOF ends the proxy and closes its stdout", async (t) => {
-  const { stdin, stdout, running } = await openProxy(t); stdin.end();
-  await bounded(running, "Input EOF must finish the proxy."); assert.equal(stdout.writableEnded, true);
+test("stdin EOF flushes queued bytes before closing the proxy", async (t) => {
+  const received = [], bytes = randomBytes(2 * 1024 * 1024); let closed;
+  const { stdin, stdout, running } = await openProxy(t, { tunnel(socket) {
+    socket.on("message", (data) => received.push(data)); closed = once(socket, "close");
+  } });
+  stdin.end(bytes);
+  await bounded(running, "Input EOF must finish the proxy.");
+  const [code] = await bounded(closed, "The tunnel must close after the input is sent.");
+  assert.deepEqual(Buffer.concat(received), bytes); assert.equal(code, 1005); assert.equal(stdout.writableEnded, true);
 });
 test("native proxy commands carry the config folder as a quoted argument", async (t) => {
   const { f } = await signedIn(t), access = await authorize(f.directory, "vm-example", { label: false });
@@ -82,6 +89,12 @@ test("certificate failures explain the server and CA login flags", () => {
   const expected = "The server's HTTPS certificate is not trusted. If your administrator gave you a root certificate, run `tartlet login --server <url> --ca <root.pem>`.";
   for (const code of ["SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "DEPTH_ZERO_SELF_SIGNED_CERT", "ERR_TLS_CERT_ALTNAME_INVALID", "CERT_HAS_EXPIRED"]) assert.equal(networkError({ code }).message, expected);
 });
+test("cloud certificate errors do not suggest a server CA override", () => {
+  for (const code of ["SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "DEPTH_ZERO_SELF_SIGNED_CERT", "ERR_TLS_CERT_ALTNAME_INVALID", "CERT_HAS_EXPIRED"]) {
+    const error = networkError({ code }, "https://app.tartlet.io");
+    assert.match(error.message, /cloud.*certificate/i); assert.ok(!error.message.includes("--ca")); assert.ok(!error.message.includes("--server"));
+  }
+});
 test("cloud connectivity errors do not suggest Tailscale", () => {
   const error = networkError({ code: "ENOTFOUND" }, "https://app.tartlet.io");
   assert.ok(!error.message.includes("Tailscale")); assert.match(error.message, /cloud|internet/i);
@@ -96,6 +109,23 @@ test("a stale profile lock is recovered automatically", async (t) => {
   await mkdir(lock); const stale = new Date(Date.now() - 65000); await utimes(lock, stale, stale);
   assert.equal(await bounded(withLock(directory, "profiles", async () => "recovered"), "An old lock must be recovered."), "recovered");
 });
+test("a busy profile lock names the path for last-resort removal", async (t) => {
+  const directory = await temporary(t), lock = path.join(directory, "profiles.lock");
+  await mkdir(lock); await writeFile(path.join(lock, "manual"), "occupied");
+  const now = Date.now(); let calls = 0;
+  t.mock.method(Date, "now", () => now + (calls++ === 0 ? 0 : 31000));
+  await assert.rejects(withLock(directory, "profiles", async () => assert.fail("A busy lock must not be entered.")), (error) => {
+    assert.ok(error.message.includes(lock)); assert.match(error.message, /delete/i); assert.match(error.message, /no .*command.*running/i); return true;
+  });
+});
+test("an existing Windows folder is protected before writing a private file", async (t) => {
+  const directory = path.join(await temporary(t), "existing"), file = path.join(directory, "profile.json");
+  await mkdir(directory); let protectedFolder = false;
+  await privateDirectory(directory, "win32", async () => {
+    await assert.rejects(readFile(file), { code: "ENOENT" }); protectedFolder = true;
+  });
+  assert.equal(protectedFolder, true); await privateWrite(file, "{}\n");
+});
 test("Windows folder permissions are set at creation and not on reads", async (t) => {
   const directory = path.join(await temporary(t), "private"), calls = [];
   const protect = async (folder) => { calls.push(folder); };
@@ -103,6 +133,9 @@ test("Windows folder permissions are set at creation and not on reads", async (t
   await privateDirectory(directory, "win32", protect);
   await privateDirectory(directory, "win32", protect);
   assert.deepEqual(calls, [directory]);
+  const [marker] = await readdir(directory); assert.ok(marker, "Successful ACL setup must leave a marker.");
+  await rm(path.join(directory, marker));
+  await privateDirectory(directory, "win32", protect); assert.deepEqual(calls, [directory, directory]);
 });
 test("failed Windows permission setup is retried before using the folder", async (t) => {
   const directory = path.join(await temporary(t), "private"); let calls = 0;
@@ -110,9 +143,17 @@ test("failed Windows permission setup is retried before using the folder", async
   await assert.rejects(privateDirectory(directory, "win32", protect), /ACL denied/);
   await privateDirectory(directory, "win32", protect); assert.equal(calls, 2);
 });
+test("an existing Windows folder retries a failed ACL without losing its files", async (t) => {
+  const directory = path.join(await temporary(t), "existing"), file = path.join(directory, "existing.txt");
+  await mkdir(directory); await writeFile(file, "keep"); let calls = 0;
+  const protect = async () => { if (++calls === 1) throw new Error("ACL denied"); };
+  await assert.rejects(privateDirectory(directory, "win32", protect), /ACL denied/);
+  assert.equal(await readFile(file, "utf8"), "keep"); assert.deepEqual(await readdir(directory), ["existing.txt"]);
+  await privateDirectory(directory, "win32", protect); assert.equal(calls, 2);
+});
 test("Windows private folders and their files grant access only to the current account", { skip: process.platform !== "win32" }, async (t) => {
   const directory = path.join(await temporary(t), "private & %data%"), file = path.join(directory, "profile.json");
-  await privateWrite(file, "{}\n");
+  await mkdir(directory); await privateWrite(file, "{}\n");
   const script = `$ErrorActionPreference = 'Stop'
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $paths = ConvertFrom-Json $env:TARTLET_TEST_PATHS

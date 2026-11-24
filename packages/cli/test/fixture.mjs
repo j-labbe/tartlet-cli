@@ -20,7 +20,7 @@ const exec = promisify(execFile), token = () => randomBytes(32).toString("base64
 const { Server, utils } = ssh2;
 export async function certificates() {
   const directory = await mkdtemp(path.join(tmpdir(), "tartlet-test-cert-")), key = path.join(directory, "key.pem"), cert = path.join(directory, "cert.pem");
-  await exec("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-keyout", key, "-out", cert, "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1,IP:::1,DNS:localhost", "-addext", "basicConstraints=critical,CA:TRUE"]);
+  await exec("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-keyout", key, "-out", cert, "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1,IP:::1,DNS:localhost", "-addext", "basicConstraints=critical,CA:TRUE"], { env: { ...process.env, MSYS_NO_PATHCONV: "1" } });
   return { directory, key: await readFile(key), cert: await readFile(cert), close: () => rm(directory, { recursive: true, force: true }) };
 }
 function authClient(client, state) {
@@ -156,6 +156,7 @@ export async function fake(t, options = {}) {
       socket.end(`HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`); return;
     }
     webSockets.handleUpgrade(req, socket, head, (ws) => {
+      if (options.tunnel) { options.tunnel(ws); return; }
       const stream = createWebSocketStream(ws), upstream = connect(port, "127.0.0.1");
       const close = () => { upstream.destroy(); stream.destroy(); ws.terminate(); };
       upstream.on("error", close); stream.on("error", close); upstream.on("close", close); stream.on("close", close);
