@@ -43,6 +43,20 @@ test("cloud PKCE uses its issuer token without a JWKS request, then signs in to 
   assert.ok(!f.state.requests.some((request) => request.authorization === cloudBearer));
   assert.ok(!(await readFile(path.join(f.directory, "profiles.json"), "utf8")).includes(cloudBearer.slice(7)));
 });
+test("cloud login explains loopback-only servers without offering an address", async (t) => {
+  const cloud = await fake(t, { cloud: true }), io = testIO(cloud), choices = [];
+  cloud.state.servers = [{ server_id: `srv_${"a".repeat(26)}`, org_id: `org_${"a".repeat(26)}`, name: "Server 1", addresses: [{ kind: "loopback", host: "localhost", port: 8080 }], online: true }];
+  await assert.rejects(login({ directory: cloud.directory, device: false, cloud: cloud.endpoint, io: { ...io.io, choose: async (message) => { choices.push(message); return 0; } } }), /This server is reachable only on its own Mac\. Add HTTPS on that server first \(docs\/remote-access\.md\)\./);
+  assert.deepEqual(choices, ["Choose a server"]);
+  assert.equal((await readState(cloud.directory)).profiles.length, 0);
+});
+test("cloud login offers only HTTPS addresses when a server also has loopback", async (t) => {
+  const f = await fake(t), cloud = await fake(t, { cloud: true }), serverIO = testIO(f), cloudIO = testIO(cloud), choices = [];
+  cloud.state.servers = [{ server_id: `srv_${"a".repeat(26)}`, org_id: `org_${"a".repeat(26)}`, name: "Server 1", addresses: [{ kind: "loopback", host: "localhost", port: 8080 }, { kind: "lan", host: "127.0.0.1", port: Number(new URL(f.endpoint.origin).port) }], online: true }];
+  await login({ directory: f.directory, ca: path.join(f.certs.directory, "cert.pem"), device: false, cloud: cloud.endpoint, io: { ...serverIO.io, open: (url) => new URL(url).origin === cloud.endpoint.origin ? cloudIO.io.open(url) : serverIO.io.open(url), choose: async (message, options) => { choices.push({ message, options }); return 0; } } });
+  assert.deepEqual(choices[1], { message: "Choose a server address", options: [`${f.endpoint.origin} (lan)`] });
+  assert.equal((await readState(f.directory)).profiles[0].origin, f.endpoint.origin);
+});
 test("cloud metadata cannot replace a saved server origin or trust pin", async (t) => {
   const { f, io } = await signedIn(t), cloud = await fake(t, { cloud: true }), cloudIO = testIO(cloud);
   const server_id = `srv_${"a".repeat(26)}`;

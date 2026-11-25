@@ -4,10 +4,13 @@ import { ProtocolFailureSchema } from "./errors.js";
 import { CursorSchema, DeviceCodeSchema, HostSchema, HttpsUrlSchema, NonceSchema, PersonIdentitySchema, PortSchema, ServerPublicKeySchema, UnixTimeSchema } from "./primitives.js";
 
 export const JwsCompactSchema = z.string().max(16384).regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
-export const EnrollmentAddressSchema = z.strictObject({
-  kind: z.enum(["tailnet", "lan"]), host: HostSchema,
-  port: PortSchema.refine((value) => value !== 443, "Omit the default HTTPS port 443.").optional(),
-});
+export const EnrollmentAddressSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.enum(["tailnet", "lan"]), host: HostSchema,
+    port: PortSchema.refine((value) => value !== 443, "Omit the default HTTPS port 443.").optional(),
+  }),
+  z.strictObject({ kind: z.literal("loopback"), host: z.literal("localhost"), port: PortSchema }),
+]);
 export const HttpsTrustSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("webpki") }),
   z.strictObject({ kind: z.literal("local_ca"), root_sha256: z.string().regex(/^[0-9a-f]{64}$/).describe("SHA-256 of the root certificate's DER-encoded SubjectPublicKeyInfo (SPKI), as 64 lowercase hex characters.") }),

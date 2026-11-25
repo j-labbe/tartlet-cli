@@ -10,6 +10,13 @@ function originOf(address: ServerListResponse["servers"][number]["addresses"][nu
   const host = address.host.includes(":") ? `[${address.host}]` : address.host;
   return normalizeOrigin(`https://${host}${address.port === undefined ? "" : `:${address.port}`}`);
 }
+async function chooseOrigin(io: LoginIO, all: ServerListResponse["servers"][number]["addresses"]) {
+  const addresses = all.filter((address) => address.kind !== "loopback");
+  if (!addresses.length) throw new Error("This server is reachable only on its own Mac. Add HTTPS on that server first (docs/remote-access.md).");
+  const address = addresses[await io.choose("Choose a server address", addresses.map((entry) => `${originOf(entry)} (${entry.kind})`))];
+  if (!address) throw new Error("Choose one of the listed addresses.");
+  return originOf(address);
+}
 async function fromCloud(options: LoginOptions) {
   const cloud = options.cloud ?? { origin: "https://app.tartlet.io", trust: { kind: "webpki" } }, metadata = await discover(cloud, true);
   const { tokens } = await signIn({ endpoint: cloud, metadata, device: options.device, cloud: true, io: options.io });
@@ -22,9 +29,7 @@ async function fromCloud(options: LoginOptions) {
   if (named?.server_id && named.server_id !== server.server_id) throw new Error("That profile belongs to a different server. Choose its server from the list, or use another --profile name.");
   const saved = named ?? state.profiles.find((entry) => entry.server_id === server.server_id);
   if (saved) return { origin: saved.origin, server_id: server.server_id, saved };
-  const address = server.addresses[await options.io.choose("Choose a server address", server.addresses.map((entry) => `${originOf(entry)} (${entry.kind})`))];
-  if (!address) throw new Error("Choose one of the listed addresses.");
-  const origin = originOf(address);
+  const origin = await chooseOrigin(options.io, server.addresses);
   return { origin, server_id: server.server_id, saved: state.profiles.find((entry) => entry.origin === origin) };
 }
 async function target(options: LoginOptions) {

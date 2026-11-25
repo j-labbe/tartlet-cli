@@ -1,6 +1,6 @@
 {
   "name": "@tartlet/protocol",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Shared Zod schemas, TypeScript types, and pure helpers for Tartlet clients and services",
   "type": "module",
   "license": "Apache-2.0",
