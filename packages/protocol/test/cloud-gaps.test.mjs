@@ -192,10 +192,10 @@ test("cloud access tokens target their issuer and enforce subject, lifetime, and
   await assert.rejects(p.verifyCloudAccessToken(options(artifacts[1], await sign({ ...valid, nbf: 1061 }))));
 });
 
-test("protocol package version is 0.2.0 while protocol wire version remains 1", async () => {
+test("protocol package version is 0.3.0 while protocol wire version remains 1", async () => {
   const metadata = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const lock = JSON.parse(await readFile(new URL("../../../package-lock.json", import.meta.url), "utf8"));
-  assert.equal(metadata.version, "0.2.0");
-  assert.equal(lock.packages["packages/protocol"].version, "0.2.0");
+  assert.equal(metadata.version, "0.3.0");
+  assert.equal(lock.packages["packages/protocol"].version, "0.3.0");
   assert.equal(p.PROTOCOL_VERSION, 1);
 });
